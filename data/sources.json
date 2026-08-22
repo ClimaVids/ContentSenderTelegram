@@ -1,0 +1,14 @@
+{
+  "sources": [
+    {
+      "id": "sample-climate-rss",
+      "name": "Replace with trusted Persian climate/water RSS",
+      "url": "https://example.com",
+      "rss": "https://example.com/feed.xml",
+      "language": "fa",
+      "category": "climate",
+      "trust_score": 50,
+      "enabled": false
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+# Generated runtime state is intentionally kept small.
+# Secrets are never stored here.
