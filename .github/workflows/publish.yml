@@ -1,0 +1,49 @@
+name: ClimaVids Telegram Publisher
+
+on:
+  schedule:
+    - cron: '19 */3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: climavids-publisher
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e .
+
+      - name: Publish one selected post
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m climavids.cli publish --limit 1
+
+      - name: Persist publication state
+        run: |
+          if [ -f data/state.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -f data/state.json
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: persist publication state"
+              git push
+            fi
+          fi
