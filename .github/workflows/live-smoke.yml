@@ -1,10 +1,6 @@
 name: Live Telegram Smoke Test
 
 on:
-  issue_comment:
-    types: [created]
-  schedule:
-    - cron: '35 * * * *'
   push:
     branches: [main]
 
@@ -13,7 +9,7 @@ permissions:
 
 jobs:
   smoke:
-    if: ${{ (github.event_name == 'issue_comment' && github.event.comment.body == 'RUN TELEGRAM SMOKE') || github.event_name == 'schedule' || (github.event_name == 'push' && github.event.head_commit.message == 'test: live telegram smoke') }}
+    if: github.event.head_commit.message == 'test: live telegram smoke'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -29,17 +25,8 @@ jobs:
           set -euo pipefail
           test -n "${TELEGRAM_BOT_TOKEN:-}"
           test -n "${TELEGRAM_CHAT_ID:-}"
-
-          existing=$(curl --fail --silent --show-error "https://t.me/s/climavids" || true)
-          if printf '%s' "$existing" | grep -Fq 'ClimaVids Content Engine — تست واقعی انتشار خودکار'; then
-            python - <<'PY'
-import json
-from pathlib import Path
-Path('data/live_smoke_result.json').write_text(json.dumps({"status":"already_present"}, ensure_ascii=False, indent=2), encoding='utf-8')
-PY
-          else
-            export TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID
-            python - <<'PY'
+          export TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID
+          python - <<'PY'
 import json
 import os
 from datetime import datetime, timezone
@@ -47,7 +34,7 @@ from urllib.request import Request, urlopen
 
 text = (
     "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\n"
-    "این پیام برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شده است.\n\n"
+    "برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شد.\n\n"
     "برای همکاری و تبلیغات پیام دهید\n"
     "ایمانی‌پور | @ClimaVids\n\n"
     "زمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -63,21 +50,5 @@ with urlopen(req, timeout=20) as response:
     result = json.load(response)
 assert result.get("ok") is True, result
 message_id = int(result["result"]["message_id"])
-Path("data/live_smoke_result.json").write_text(
-    json.dumps({"status":"sent", "message_id":message_id, "url":f"https://t.me/climavids/{message_id}"}, ensure_ascii=False, indent=2),
-    encoding="utf-8",
-)
 print(f"telegram_ok=true message_id={message_id}")
 PY
-          fi
-
-      - name: Persist smoke result
-        if: github.event_name != 'issue_comment'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/live_smoke_result.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: record live telegram smoke result"
-            git push
-          fi
