@@ -5,6 +5,7 @@ from pathlib import Path
 
 from climavids.collectors.gdelt import collect as collect_gdelt
 from climavids.collectors.rss import collect as collect_rss
+from climavids.collectors.telegram_web import collect as collect_telegram
 from climavids.content import render
 from climavids.dedup import similarity
 from climavids.models import Source
@@ -26,8 +27,10 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
                 raw.extend(collect_gdelt(source, limit=50))
             elif source.kind == "rss":
                 raw.extend(collect_rss(source, limit=50))
+            elif source.kind == "telegram_web":
+                raw.extend(collect_telegram(source, limit=30))
         except Exception as exc:
-            print(f"SOURCE_ERROR {source.id}: {type(exc).__name__}")
+            print(f"SOURCE_ERROR {source.id}: {type(exc).__name__}: {exc}")
 
     unique = []
     for item in raw:
@@ -44,6 +47,6 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
         draft = render(scored.item, ["news", "short", "question", "analysis"][i % 4])
         output.append({"score": scored.total, "draft": draft.model_dump(mode="json")})
 
-    if output:
+    if dry_run and output:
         Path("data/dry_run.json").write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
     return output
