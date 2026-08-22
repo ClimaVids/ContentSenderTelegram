@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 import re
 
 from climavids.models import ContentDraft, NewsItem
 
 PERSIAN_STYLES = ["news", "short", "question", "analysis"]
+DEFAULT_FOOTER = "ایمانی‌پور | @ClimaVids"
+DEFAULT_CTA = "برای همکاری و تبلیغات پیام دهید"
 
 
 def category_label(category: str) -> str:
@@ -22,6 +25,15 @@ def choose_style(item: NewsItem, index: int = 0) -> str:
     return PERSIAN_STYLES[index % len(PERSIAN_STYLES)]
 
 
+def _footer() -> str:
+    sponsor_link = os.getenv("SPONSOR_LINK", "").strip()
+    parts = [DEFAULT_CTA]
+    if sponsor_link:
+        parts.append(f"لینک اسپانسر: {sponsor_link}")
+    parts.append(DEFAULT_FOOTER)
+    return "\n\n" + "\n".join(parts)
+
+
 def render(item: NewsItem, style: str = "news") -> ContentDraft:
     label = category_label(item.category)
     title = item.title.strip()
@@ -34,10 +46,11 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
         body = f"📊 {label}\n\n{title}\n\n{clean_summary[:700]}\n\nنکته: برای تفسیر دقیق‌تر، داده‌ها و منبع اصلی را نیز بررسی کنید.\n\nمنبع: {item.source_id}"
     else:
         body = f"📰 {title}\n\n{clean_summary[:900]}\n\nمنبع: {item.source_id}"
+    body = (body + _footer())[:3900]
     return ContentDraft(
         item_id=item.id,
         title=title[:120],
-        body=body[:3900],
+        body=body,
         style=style,
         with_image=False,
         source_url=item.url,
