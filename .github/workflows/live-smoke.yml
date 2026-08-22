@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   smoke:
@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Send one-time smoke message
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -22,20 +25,48 @@ jobs:
           set -euo pipefail
           test -n "${TELEGRAM_BOT_TOKEN:-}"
           test -n "${TELEGRAM_CHAT_ID:-}"
-          payload=$(python - <<'PY'
-from datetime import datetime, timezone
-print({"chat_id": "PLACEHOLDER", "text": "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\nاین پیام برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شده است.\n\nزمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")})
-PY
-          )
-          payload=${payload/PLACEHOLDER/$TELEGRAM_CHAT_ID}
-          curl --fail --silent --show-error \
-            -H 'Content-Type: application/json' \
-            -d "$payload" \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" > /tmp/telegram-result.json
-          python - <<'PY'
+
+          existing=$(curl --fail --silent --show-error "https://t.me/s/climavids" || true)
+          if printf '%s' "$existing" | grep -Fq 'تست واقعی انتشار خودکار'; then
+            python - <<'PY'
 import json
-p=json.load(open('/tmp/telegram-result.json', encoding='utf-8'))
-assert p.get('ok') is True, p
-print('telegram_ok=true')
-print('message_id=' + str(p['result']['message_id']))
+from pathlib import Path
+Path('data/live_smoke_result.json').write_text(json.dumps({"status":"already_present"}, ensure_ascii=False, indent=2), encoding='utf-8')
 PY
+          else
+            export TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID
+            python - <<'PY'
+import json
+import os
+from datetime import datetime, timezone
+from urllib.request import Request, urlopen
+
+payload = {
+    "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+    "text": "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\nاین پیام برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شده است.\n\nزمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+}
+req = Request(
+    f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+    data=json.dumps(payload).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urlopen(req, timeout=20) as response:
+    result = json.load(response)
+assert result.get("ok") is True, result
+message_id = int(result["result"]["message_id"])
+Path("data/live_smoke_result.json").write_text(
+    json.dumps({"status":"sent", "message_id":message_id, "url":f"https://t.me/climavids/{message_id}"}, ensure_ascii=False, indent=2),
+    encoding="utf-8",
+)
+print(f"telegram_ok=true message_id={message_id}")
+PY
+          fi
+
+      - name: Persist smoke result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/live_smoke_result.json
+          git commit -m "chore: record live telegram smoke result"
+          git push
