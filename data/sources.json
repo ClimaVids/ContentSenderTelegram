@@ -52,7 +52,7 @@
     "language": "fa",
     "categories": ["weather", "climate"],
     "trust_score": 98,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "official-wrm-gdelt",
@@ -63,7 +63,7 @@
     "language": "fa",
     "categories": ["water", "environment"],
     "trust_score": 98,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "official-doe-gdelt",
@@ -74,7 +74,7 @@
     "language": "fa",
     "categories": ["environment", "water", "climate"],
     "trust_score": 96,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "gdelt-fa-water",
@@ -85,7 +85,7 @@
     "language": "fa",
     "categories": ["water"],
     "trust_score": 80,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "gdelt-fa-weather",
@@ -96,7 +96,7 @@
     "language": "fa",
     "categories": ["weather"],
     "trust_score": 80,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "gdelt-fa-climate",
@@ -107,6 +107,6 @@
     "language": "fa",
     "categories": ["climate"],
     "trust_score": 80,
-    "enabled": true
+    "enabled": false
   }
 ]
