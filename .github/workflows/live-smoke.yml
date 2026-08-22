@@ -27,7 +27,7 @@ jobs:
           test -n "${TELEGRAM_CHAT_ID:-}"
 
           existing=$(curl --fail --silent --show-error "https://t.me/s/climavids" || true)
-          if printf '%s' "$existing" | grep -Fq 'تست واقعی انتشار خودکار'; then
+          if printf '%s' "$existing" | grep -Fq 'ClimaVids Content Engine — تست واقعی انتشار خودکار'; then
             python - <<'PY'
 import json
 from pathlib import Path
@@ -41,10 +41,14 @@ import os
 from datetime import datetime, timezone
 from urllib.request import Request, urlopen
 
-payload = {
-    "chat_id": os.environ["TELEGRAM_CHAT_ID"],
-    "text": "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\nاین پیام برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شده است.\n\nزمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-}
+text = (
+    "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\n"
+    "این پیام برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شده است.\n\n"
+    "برای همکاری و تبلیغات پیام دهید\n"
+    "ایمانی‌پور | @ClimaVids\n\n"
+    "زمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+)
+payload = {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text}
 req = Request(
     f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
     data=json.dumps(payload).encode(),
@@ -68,5 +72,7 @@ PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/live_smoke_result.json
-          git commit -m "chore: record live telegram smoke result"
-          git push
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: record live telegram smoke result"
+            git push
+          fi
