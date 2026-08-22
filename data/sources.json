@@ -1,7 +1,51 @@
 [
   {
-    "id": "official-irimo",
-    "name": "سازمان هواشناسی کشور (منابع رسمی) — GDELT",
+    "id": "official-irimo-telegram",
+    "name": "سازمان هواشناسی کشور — کانال اطلاع‌رسانی",
+    "kind": "telegram_web",
+    "url": "https://t.me/irimo_news",
+    "channel": "irimo_news",
+    "language": "fa",
+    "categories": ["weather", "climate"],
+    "trust_score": 99,
+    "enabled": true
+  },
+  {
+    "id": "official-doe-telegram",
+    "name": "سازمان حفاظت محیط زیست — کانال اطلاع‌رسانی",
+    "kind": "telegram_web",
+    "url": "https://t.me/doenews",
+    "channel": "doenews",
+    "language": "fa",
+    "categories": ["environment", "water", "climate"],
+    "trust_score": 97,
+    "enabled": true
+  },
+  {
+    "id": "water-online",
+    "name": "نیرو آنلاین — اخبار صنعت آب و برق",
+    "kind": "telegram_web",
+    "url": "https://t.me/niroonline",
+    "channel": "niroonline",
+    "language": "fa",
+    "categories": ["water", "environment", "energy"],
+    "trust_score": 90,
+    "enabled": true
+  },
+  {
+    "id": "groundwater-resources",
+    "name": "GroundWater — منابع آب زیرزمینی",
+    "kind": "telegram_web",
+    "url": "https://t.me/GroundWaterResources",
+    "channel": "GroundWaterResources",
+    "language": "fa",
+    "categories": ["water", "climate"],
+    "trust_score": 86,
+    "enabled": true
+  },
+  {
+    "id": "official-irimo-gdelt",
+    "name": "سازمان هواشناسی کشور — پایش GDELT",
     "kind": "gdelt",
     "url": "https://api.gdeltproject.org/api/v2/doc/doc",
     "endpoint": "https://api.gdeltproject.org/api/v2/doc/doc?query=domain%3Airimo.ir%20OR%20domain%3Aclima.irimo.ir&mode=artlist&maxrecords=50&format=json&sort=datedesc",
@@ -11,8 +55,8 @@
     "enabled": true
   },
   {
-    "id": "official-wrm",
-    "name": "شرکت مدیریت منابع آب ایران (منابع رسمی) — GDELT",
+    "id": "official-wrm-gdelt",
+    "name": "شرکت مدیریت منابع آب ایران — پایش GDELT",
     "kind": "gdelt",
     "url": "https://api.gdeltproject.org/api/v2/doc/doc",
     "endpoint": "https://api.gdeltproject.org/api/v2/doc/doc?query=domain%3Awrm.ir&mode=artlist&maxrecords=50&format=json&sort=datedesc",
@@ -22,8 +66,8 @@
     "enabled": true
   },
   {
-    "id": "official-doe",
-    "name": "سازمان حفاظت محیط زیست (منابع رسمی) — GDELT",
+    "id": "official-doe-gdelt",
+    "name": "سازمان حفاظت محیط زیست — پایش GDELT",
     "kind": "gdelt",
     "url": "https://api.gdeltproject.org/api/v2/doc/doc",
     "endpoint": "https://api.gdeltproject.org/api/v2/doc/doc?query=domain%3Adoe.ir&mode=artlist&maxrecords=50&format=json&sort=datedesc",
