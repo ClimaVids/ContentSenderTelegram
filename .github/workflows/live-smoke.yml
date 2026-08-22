@@ -32,6 +32,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+chat_id = os.environ["TELEGRAM_CHAT_ID"].strip()
+assert chat_id.lstrip("-").isdigit(), "TELEGRAM_CHAT_ID must be a numeric Telegram chat id"
 base = f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}"
 with urlopen(Request(f"{base}/getMe"), timeout=20) as response:
     me = json.load(response)
@@ -39,12 +41,12 @@ assert me.get('ok') is True, me
 
 text = (
     "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\n"
-    "این پیام برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شده است.\n\n"
+    "اتصال امن GitHub Actions به کانال @climavids با شناسه عددی تأیید شد.\n\n"
     "برای همکاری و تبلیغات پیام دهید\n"
     "ایمانی‌پور | @ClimaVids\n\n"
     "زمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 )
-payload = {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text}
+payload = {"chat_id": int(chat_id), "text": text}
 req = Request(
     f"{base}/sendMessage",
     data=json.dumps(payload).encode(),
