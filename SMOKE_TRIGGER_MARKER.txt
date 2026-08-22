@@ -1,1 +1,1 @@
-trigger-2026-08-23-0322
+live telegram smoke run 2026-08-23T03:30:00+03:30
