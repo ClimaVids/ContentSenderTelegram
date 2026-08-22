@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   publish:
@@ -47,3 +48,13 @@ jobs:
               git push
             fi
           fi
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Telegram publisher failure — $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --body "Automated publisher failed. Review the failed GitHub Actions run and logs. Secrets are not included in this report." \
+            --label "automation" || true
