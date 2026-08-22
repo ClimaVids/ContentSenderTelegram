@@ -1,1 +1,1 @@
-one-time live smoke trigger
+one-time live smoke trigger v2
