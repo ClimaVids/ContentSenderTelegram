@@ -1,49 +1,53 @@
-import hashlib
-import re
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+import time
 
 import feedparser
+import requests
 
 from climavids.models import NewsItem, Source
+from climavids.utils import fingerprint
 
 
-def _slug(text: str) -> str:
-    text = re.sub(r"\s+", " ", text.lower()).strip()
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:20]
+HEADERS = {"User-Agent": "ClimaVidsContentEngine/0.2 (+https://github.com/birjandclimate-arch/climavids-content-engine)"}
 
 
-def parse_datetime(entry) -> datetime | None:
-    raw = entry.get("published") or entry.get("updated")
-    if not raw:
+def _published(entry) -> datetime | None:
+    value = getattr(entry, "published", None) or getattr(entry, "updated", None)
+    if not value:
         return None
     try:
-        dt = parsedate_to_datetime(raw)
-        return dt.astimezone(timezone.utc)
-    except (TypeError, ValueError, OverflowError):
+        dt = parsedate_to_datetime(value)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
         return None
 
 
-def collect_rss(source: Source, timeout: int = 20, max_items: int = 30) -> list[NewsItem]:
-    feed = feedparser.parse(str(source.rss), request_headers={"User-Agent": "ClimaVidsContentEngine/0.1"})
+def collect(source: Source, timeout: int = 15, limit: int = 50) -> list[NewsItem]:
+    response = requests.get(str(source.endpoint or source.url), headers=HEADERS, timeout=timeout)
+    response.raise_for_status()
+    parsed = feedparser.parse(response.content)
     items: list[NewsItem] = []
-    for entry in feed.entries[:max_items]:
-        title = str(entry.get("title", "")).strip()
-        url = str(entry.get("link", "")).strip()
-        if not title or not url:
+    for entry in parsed.entries[:limit]:
+        title = (getattr(entry, "title", "") or "").strip()
+        link = (getattr(entry, "link", "") or "").strip()
+        if not title or not link:
             continue
-        summary = re.sub(r"\s+", " ", str(entry.get("summary", ""))).strip()
-        item_id = _slug(source.id + "|" + url)
+        summary = (getattr(entry, "summary", "") or "").strip()
         items.append(
             NewsItem(
-                id=item_id,
+                id=fingerprint(title, link),
                 source_id=source.id,
                 title=title,
-                url=url,
-                summary=summary[:3000],
-                published_at=parse_datetime(entry),
-                category=source.category,
+                url=link,
+                summary=summary[:4000],
+                published_at=_published(entry),
+                category=source.categories[0] if source.categories else "general",
                 trust_score=source.trust_score,
+                language=source.language,
             )
         )
+    time.sleep(0.05)
     return items

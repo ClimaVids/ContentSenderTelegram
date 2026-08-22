@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Literal
 from pydantic import BaseModel, Field, HttpUrl
@@ -6,10 +8,11 @@ from pydantic import BaseModel, Field, HttpUrl
 class Source(BaseModel):
     id: str
     name: str
+    kind: Literal["rss", "gdelt", "weather"] = "rss"
     url: HttpUrl
-    rss: HttpUrl
+    endpoint: HttpUrl | None = None
     language: str = "fa"
-    category: str = "general"
+    categories: list[str] = Field(default_factory=list)
     trust_score: int = Field(ge=0, le=100, default=70)
     enabled: bool = True
 
@@ -24,6 +27,18 @@ class NewsItem(BaseModel):
     discovered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     category: str = "general"
     trust_score: int = Field(ge=0, le=100, default=70)
+    country: str = "IR"
+    language: str = "fa"
+
+
+class ContentDraft(BaseModel):
+    item_id: str
+    title: str
+    body: str
+    style: str
+    with_image: bool = False
+    source_url: HttpUrl
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ScoredItem(BaseModel):
@@ -38,12 +53,12 @@ class ScoredItem(BaseModel):
 
     @property
     def total(self) -> float:
-        return round(
+        score = (
             0.20 * self.freshness
             + 0.20 * self.relevance
             + 0.15 * self.public_need
             + 0.20 * self.credibility
             + 0.15 * self.engagement
-            + 0.10 * self.uniqueness,
-            2,
+            + 0.10 * self.uniqueness
         )
+        return round(score, 2)

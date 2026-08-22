@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.secret
+credentials/
+
+# Generated runtime state (kept local/CI-generated only)
+data/state.json
+data/dry_run.json

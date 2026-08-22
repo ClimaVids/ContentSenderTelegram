@@ -1,26 +1,28 @@
-from datetime import datetime, timezone
-from pathlib import Path
-import json
-from typing import Any
+from __future__ import annotations
+
+import hashlib
+import re
+from urllib.parse import urlsplit, urlunsplit
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def normalize_url(url: str) -> str:
+    p = urlsplit(url.strip())
+    clean = urlunsplit((p.scheme.lower(), p.netloc.lower(), p.path.rstrip('/'), '', ''))
+    return clean
 
 
-def read_json(path: str | Path, default: Any) -> Any:
-    p = Path(path)
-    if not p.exists():
-        return default
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default
+def fingerprint(title: str, url: str = '') -> str:
+    text = re.sub(r'\W+', ' ', title.lower()).strip()
+    base = f'{text}|{normalize_url(url)}'
+    return hashlib.sha256(base.encode('utf-8')).hexdigest()[:24]
 
 
-def write_json(path: str | Path, data: Any) -> None:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(p.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(p)
+def tokens(text: str) -> set[str]:
+    return {t for t in re.findall(r'[\w\u0600-\u06ff]+', text.lower()) if len(t) > 2}
+
+
+def similarity(a: str, b: str) -> float:
+    ta, tb = tokens(a), tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
