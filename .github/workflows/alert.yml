@@ -28,8 +28,7 @@ jobs:
           set -euo pipefail
           gh issue create \
             --title "🚨 ClimaVids automation failure: ${WORKFLOW_NAME} #${RUN_NUMBER}" \
-            --body "Workflow failed.\n\nWorkflow: ${WORKFLOW_NAME}\nRun: ${RUN_NUMBER}\nURL: ${RUN_URL}\n\nThis issue is generated automatically by the ClimaVids Content Engine." \
-            --label "automation"
+            --body "Workflow failed.\n\nWorkflow: ${WORKFLOW_NAME}\nRun: ${RUN_NUMBER}\nURL: ${RUN_URL}\n\nThis issue is generated automatically by the ClimaVids Content Engine."
 
       - name: Send Telegram alert when alert chat is configured
         env:
