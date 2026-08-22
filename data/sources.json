@@ -1,5 +1,38 @@
 [
   {
+    "id": "irimo-official",
+    "name": "سازمان هواشناسی کشور — کانال رسمی",
+    "kind": "telegram_web",
+    "url": "https://t.me/IRIMO_NEWS",
+    "channel": "IRIMO_NEWS",
+    "language": "fa",
+    "categories": ["weather", "climate"],
+    "trust_score": 98,
+    "enabled": true
+  },
+  {
+    "id": "doe-official",
+    "name": "سازمان حفاظت محیط زیست — کانال اطلاع‌رسانی",
+    "kind": "telegram_web",
+    "url": "https://t.me/doenews",
+    "channel": "doenews",
+    "language": "fa",
+    "categories": ["environment", "water", "climate"],
+    "trust_score": 94,
+    "enabled": true
+  },
+  {
+    "id": "niroonline-water-power",
+    "name": "نیرو آنلاین — اخبار صنعت آب و برق",
+    "kind": "telegram_web",
+    "url": "https://t.me/niroonline",
+    "channel": "niroonline",
+    "language": "fa",
+    "categories": ["water", "environment", "energy"],
+    "trust_score": 88,
+    "enabled": true
+  },
+  {
     "id": "gdelt-fa-water",
     "name": "GDELT Persian Water News",
     "kind": "gdelt",
@@ -26,7 +59,7 @@
     "name": "GDELT Persian Climate News",
     "kind": "gdelt",
     "url": "https://api.gdeltproject.org/api/v2/doc/doc",
-    "endpoint": "https://api.gdeltproject.org/api/v2/doc/doc?query=climate%20OR%20%D8%A7%D9%82%D9%84%DB%8C%D9%85%20OR%20%22%D8%AA%D8%BA%DB%8C%DB%8C%D8%B1%20%D8%A7%D9%82%D9%84%DB%8C%D9%85%22&mode=artlist&maxrecords=50&format=json&sort=datedesc",
+    "endpoint": "https://api.gdeltproject.org/api/v2/doc/doc?query=climate%20OR%20%D8%A7%D9%82%D9%84%DB%8C%D9%85%20OR%20%22%D8%AA%D8%BA%DB%8C%D8%B1%20%D8%A7%D9%82%D9%84%DB%8C%D9%85%22&mode=artlist&maxrecords=50&format=json&sort=datedesc",
     "language": "fa",
     "categories": ["climate"],
     "trust_score": 80,
