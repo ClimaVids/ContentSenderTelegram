@@ -1,1 +1,1 @@
-one-time live smoke trigger v2
+one-time live smoke trigger retained for operator-run smoke test
