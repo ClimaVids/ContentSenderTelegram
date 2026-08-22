@@ -2,15 +2,15 @@ name: Collector Smoke Test
 
 on:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '17 */2 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: climavids-collector
   cancel-in-progress: false
-
-permissions:
-  contents: read
 
 jobs:
   collect:
@@ -23,5 +23,5 @@ jobs:
           python-version: '3.11'
       - name: Install
         run: python -m pip install --upgrade pip && pip install -e .
-      - name: Run safe collector
-        run: python -m climavids.cli collect
+      - name: Run safe dry-run collector
+        run: python -m climavids.cli dry-run --limit 5
