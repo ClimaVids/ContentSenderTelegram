@@ -8,9 +8,10 @@ from pydantic import BaseModel, Field, HttpUrl
 class Source(BaseModel):
     id: str
     name: str
-    kind: Literal["rss", "gdelt", "weather"] = "rss"
+    kind: Literal["rss", "gdelt", "weather", "telegram_web"] = "rss"
     url: HttpUrl
     endpoint: HttpUrl | None = None
+    channel: str | None = None
     language: str = "fa"
     categories: list[str] = Field(default_factory=list)
     trust_score: int = Field(ge=0, le=100, default=70)
