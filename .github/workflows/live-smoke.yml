@@ -1,25 +1,27 @@
 name: Live Telegram Smoke Test
 
 on:
-  push:
-    branches: [main]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  issues: write
 
 jobs:
   smoke:
-    if: github.event.head_commit.message == 'test: live telegram smoke'
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && github.event.issue.number == 2 && github.event.comment.body == 'RUN TELEGRAM SMOKE') }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Validate Telegram identity and publish
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
@@ -28,8 +30,6 @@ jobs:
           export TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID
           python - <<'PY'
 import json, os
-from datetime import datetime, timezone
-from pathlib import Path
 from urllib.request import Request, urlopen
 
 chat_id = os.environ["TELEGRAM_CHAT_ID"].strip()
@@ -41,10 +41,9 @@ assert me.get('ok') is True, me
 
 text = (
     "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\n"
-    "اتصال امن GitHub Actions به کانال @climavids با شناسه عددی تأیید شد.\n\n"
+    "این پیام توسط سیستم خودکار ClimaVids منتشر شد.\n\n"
     "برای همکاری و تبلیغات پیام دهید\n"
-    "ایمانی‌پور | @ClimaVids\n\n"
-    "زمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    "ایمانی‌پور | @ClimaVids"
 )
 payload = {"chat_id": int(chat_id), "text": text}
 req = Request(
@@ -57,14 +56,18 @@ with urlopen(req, timeout=20) as response:
     result = json.load(response)
 assert result.get("ok") is True, result
 message_id = int(result["result"]["message_id"])
-Path("smoke_result.txt").write_text(f"https://t.me/climavids/{message_id}\n", encoding="utf-8")
-print(f"telegram_ok=true message_id={message_id}")
+url = f"https://t.me/climavids/{message_id}"
+print(f"telegram_ok=true message_id={message_id} url={url}")
+open("smoke_url.txt", "w", encoding="utf-8").write(url + "\n")
 PY
 
-      - name: Persist smoke result
+      - name: Report success on GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add smoke_result.txt
-          git commit -m "chore: record live telegram smoke result"
-          git push
+          if [ -f smoke_url.txt ] && [ -n "${ISSUE_NUMBER:-}" ]; then
+            url=$(cat smoke_url.txt)
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "SMOKE_SUCCESS $url"
+          fi
