@@ -31,8 +31,6 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
 
     unique = []
     for item in raw:
-        # Do not discard an item just because a previous run examined it if it
-        # has never actually been published. This makes failed sends retryable.
         if state.published(item.id):
             continue
         if any(similarity(item.title, old.title) >= 0.72 for old in unique):
@@ -48,9 +46,4 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
 
     if output:
         Path("data/dry_run.json").write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
-        # Dry-run never mutates durable publication state.
-        if not dry_run:
-            for item in selected:
-                state.mark_seen(item.item.id)
-
     return output
