@@ -1,6 +1,8 @@
 name: Live Telegram Smoke Test
 
 on:
+  schedule:
+    - cron: '35 * * * *'
   push:
     branches: [main]
 
@@ -9,7 +11,7 @@ permissions:
 
 jobs:
   smoke:
-    if: github.event.head_commit.message == 'test: live telegram smoke'
+    if: ${{ github.event_name == 'schedule' || github.event.head_commit.message == 'test: live telegram smoke' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
