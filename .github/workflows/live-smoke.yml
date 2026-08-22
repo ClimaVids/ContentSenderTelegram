@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Send one-time smoke message
+      - name: Validate Telegram identity and publish
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -27,21 +27,26 @@ jobs:
           test -n "${TELEGRAM_CHAT_ID:-}"
           export TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID
           python - <<'PY'
-import json
-import os
+import json, os
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.request import Request, urlopen
+
+base = f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}"
+with urlopen(Request(f"{base}/getMe"), timeout=20) as response:
+    me = json.load(response)
+assert me.get('ok') is True, me
 
 text = (
     "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\n"
-    "برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شد.\n\n"
+    "این پیام برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شده است.\n\n"
     "برای همکاری و تبلیغات پیام دهید\n"
     "ایمانی‌پور | @ClimaVids\n\n"
     "زمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 )
 payload = {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text}
 req = Request(
-    f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+    f"{base}/sendMessage",
     data=json.dumps(payload).encode(),
     headers={"Content-Type": "application/json"},
     method="POST",
@@ -50,5 +55,14 @@ with urlopen(req, timeout=20) as response:
     result = json.load(response)
 assert result.get("ok") is True, result
 message_id = int(result["result"]["message_id"])
+Path("smoke_result.txt").write_text(f"https://t.me/climavids/{message_id}\n", encoding="utf-8")
 print(f"telegram_ok=true message_id={message_id}")
 PY
+
+      - name: Persist smoke result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add smoke_result.txt
+          git commit -m "chore: record live telegram smoke result"
+          git push
