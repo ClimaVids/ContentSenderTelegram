@@ -1,0 +1,41 @@
+name: Live Telegram Smoke Test
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event.head_commit.message == 'test: live telegram smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Send one-time smoke message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${TELEGRAM_BOT_TOKEN:-}"
+          test -n "${TELEGRAM_CHAT_ID:-}"
+          payload=$(python - <<'PY'
+from datetime import datetime, timezone
+print({"chat_id": "PLACEHOLDER", "text": "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\nاین پیام برای بررسی اتصال امن GitHub Actions به کانال @climavids ارسال شده است.\n\nزمان: " + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")})
+PY
+          )
+          payload=${payload/PLACEHOLDER/$TELEGRAM_CHAT_ID}
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -d "$payload" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" > /tmp/telegram-result.json
+          python - <<'PY'
+import json
+p=json.load(open('/tmp/telegram-result.json', encoding='utf-8'))
+assert p.get('ok') is True, p
+print('telegram_ok=true')
+print('message_id=' + str(p['result']['message_id']))
+PY
