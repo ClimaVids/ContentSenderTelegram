@@ -7,7 +7,8 @@ on:
       - Collector Smoke Test
       - CI
       - Live Telegram Smoke Test
-    types: [completed]
+    types:
+      - completed
 
 permissions:
   issues: write
@@ -16,50 +17,94 @@ jobs:
   alert:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
+
+    env:
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+      RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+
     steps:
       - name: Create GitHub failure issue
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        shell: bash
         run: |
           set -euo pipefail
+
           gh issue create \
             --title "🚨 ClimaVids automation failure: ${WORKFLOW_NAME} #${RUN_NUMBER}" \
-            --body "Workflow failed.\n\nWorkflow: ${WORKFLOW_NAME}\nRun: ${RUN_NUMBER}\nURL: ${RUN_URL}\n\nThis issue is generated automatically by the ClimaVids Content Engine."
+            --body "Workflow failed.
 
-      - name: Send Telegram alert when alert chat is configured
+          Workflow: ${WORKFLOW_NAME}
+          Run: ${RUN_NUMBER}
+          URL: ${RUN_URL}
+
+          This issue was generated automatically by the ClimaVids Content Engine."
+
+      - name: Send Telegram failure alert
         if: ${{ env.TELEGRAM_ALERT_CHAT_ID != '' }}
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
-        shell: bash
         continue-on-error: true
+        shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-import json, os
-from urllib.request import Request, urlopen
 
-chat_id = os.environ["TELEGRAM_ALERT_CHAT_ID"].strip()
-assert chat_id.lstrip("-").isdigit(), "TELEGRAM_ALERT_CHAT_ID must be numeric"
-text = (
-    "🚨 خطا در ClimaVids Content Engine\n\n"
-    f"Workflow: {os.environ['WORKFLOW_NAME']} #{os.environ['RUN_NUMBER']}\n"
-    f"{os.environ['RUN_URL']}"
-)
-req = Request(
-    f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
-    data=json.dumps({"chat_id": int(chat_id), "text": text}).encode(),
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-with urlopen(req, timeout=20) as response:
-    result = json.load(response)
-assert result.get("ok") is True, result
-PY
+          test -n "${TELEGRAM_BOT_TOKEN:-}" || {
+            echo "TELEGRAM_BOT_TOKEN is not configured."
+            exit 1
+          }
+
+          test -n "${TELEGRAM_ALERT_CHAT_ID:-}" || {
+            echo "TELEGRAM_ALERT_CHAT_ID is not configured."
+            exit 1
+          }
+
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          bot_token = os.environ["TELEGRAM_BOT_TOKEN"].strip()
+          chat_id = os.environ["TELEGRAM_ALERT_CHAT_ID"].strip()
+
+          if not chat_id.lstrip("-").isdigit():
+              raise SystemExit(
+                  "TELEGRAM_ALERT_CHAT_ID must be numeric"
+              )
+
+          workflow = os.environ["WORKFLOW_NAME"]
+          run_number = os.environ["RUN_NUMBER"]
+          run_url = os.environ["RUN_URL"]
+
+          text = (
+              "🚨 خطا در سیستم خودکار ClimaVids\n\n"
+              f"Workflow: {workflow} #{run_number}\n"
+              f"{run_url}"
+          )
+
+          payload = {
+              "chat_id": int(chat_id),
+              "text": text,
+              "disable_web_page_preview": True,
+          }
+
+          request = Request(
+              f"https://api.telegram.org/bot{bot_token}/sendMessage",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+
+          with urlopen(request, timeout=20) as response:
+              result = json.load(response)
+
+          if not result.get("ok"):
+              raise RuntimeError(f"Telegram API error: {result}")
+
+          print("Telegram failure alert sent successfully.")
+          PY
