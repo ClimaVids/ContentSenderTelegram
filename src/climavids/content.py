@@ -9,6 +9,7 @@ from climavids.models import ContentDraft, NewsItem
 PERSIAN_STYLES = ["news", "short", "question", "analysis"]
 DEFAULT_FOOTER = "ایمانی‌پور | @ClimaVids"
 DEFAULT_CTA = "برای همکاری و تبلیغات پیام دهید"
+DEFAULT_CHANNEL_LINK = "https://t.me/climavid"
 
 
 def category_label(category: str) -> str:
@@ -27,10 +28,9 @@ def choose_style(item: NewsItem, index: int = 0) -> str:
 
 def _footer() -> str:
     sponsor_link = os.getenv("SPONSOR_LINK", "").strip()
-    parts = [DEFAULT_CTA]
+    parts = [DEFAULT_CTA, DEFAULT_FOOTER, f"🔗 {DEFAULT_CHANNEL_LINK}"]
     if sponsor_link:
         parts.append(f"لینک اسپانسر: {sponsor_link}")
-    parts.append(DEFAULT_FOOTER)
     return "\n\n" + "\n".join(parts)
 
 
