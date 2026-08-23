@@ -20,12 +20,13 @@ def main() -> None:
         return
 
     if args.command == "publish":
-        items = run(dry_run=False, limit=max(1, min(args.limit, 1)))
+        items = run(dry_run=False, limit=1)
         if not items:
             print(json.dumps({"published": False, "reason": "no_candidate"}, ensure_ascii=False))
             return
         draft = items[0]["draft"]
-        result = TelegramPublisher().send_text(draft["body"] + f"\n\n🔗 {draft['source_url']}")
+        publisher = TelegramPublisher()
+        result = publisher.send_text(draft["body"])
         message_id = result.get("result", {}).get("message_id")
         state = JsonState()
         state.mark_published(draft["item_id"], message_id)
