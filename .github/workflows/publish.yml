@@ -2,7 +2,9 @@ name: ClimaVids Telegram Publisher
 
 on:
   schedule:
-    - cron: '19 */3 * * *'
+    # GitHub Actions cron is UTC. Azerbaijan/Iran-style +03:30 local target:
+    # 06:19, 09:19, 12:19, 15:19, 18:19 local.
+    - cron: '49 2,5,8,11,14 * * *'
   workflow_dispatch:
 
 concurrency:
