@@ -31,6 +31,7 @@ jobs:
             --body "Workflow failed.\n\nWorkflow: ${WORKFLOW_NAME}\nRun: ${RUN_NUMBER}\nURL: ${RUN_URL}\n\nThis issue is generated automatically by the ClimaVids Content Engine."
 
       - name: Send Telegram alert when alert chat is configured
+        if: ${{ env.TELEGRAM_ALERT_CHAT_ID != '' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
@@ -38,22 +39,24 @@ jobs:
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
         shell: bash
+        continue-on-error: true
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_ALERT_CHAT_ID:-}" ]; then
-            exit 0
-          fi
           python - <<'PY'
 import json, os
 from urllib.request import Request, urlopen
-payload = {
-    "chat_id": os.environ["TELEGRAM_ALERT_CHAT_ID"],
-    "text": f"🚨 خطا در ClimaVids Content Engine\n\nWorkflow: {os.environ['WORKFLOW_NAME']} #{os.environ['RUN_NUMBER']}\n{os.environ['RUN_URL']}",
-}
+
+chat_id = os.environ["TELEGRAM_ALERT_CHAT_ID"].strip()
+assert chat_id.lstrip("-").isdigit(), "TELEGRAM_ALERT_CHAT_ID must be numeric"
+text = (
+    "🚨 خطا در ClimaVids Content Engine\n\n"
+    f"Workflow: {os.environ['WORKFLOW_NAME']} #{os.environ['RUN_NUMBER']}\n"
+    f"{os.environ['RUN_URL']}"
+)
 req = Request(
     f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
-    data=json.dumps(payload).encode(),
-    headers={"Content-Type":"application/json"},
+    data=json.dumps({"chat_id": int(chat_id), "text": text}).encode(),
+    headers={"Content-Type": "application/json"},
     method="POST",
 )
 with urlopen(req, timeout=20) as response:
