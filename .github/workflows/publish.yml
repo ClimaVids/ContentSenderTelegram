@@ -4,9 +4,6 @@ on:
   schedule:
     - cron: '19 */3 * * *'
   workflow_dispatch:
-  push:
-    paths:
-      - MANUAL_PUBLISH_NOW.txt
 
 concurrency:
   group: climavids-publisher
