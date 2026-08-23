@@ -25,4 +25,3 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python -m climavids.cli publish
-          "افزودن دستی ورک فلو"
