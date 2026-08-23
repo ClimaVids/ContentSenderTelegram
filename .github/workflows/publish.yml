@@ -4,8 +4,6 @@ on:
   schedule:
     - cron: '19 */3 * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
 
 concurrency:
   group: climavids-publisher
@@ -17,7 +15,6 @@ permissions:
 
 jobs:
   publish:
-    if: ${{ github.event_name != 'push' || github.event.head_commit.message == 'test: live telegram smoke' }}
     runs-on: ubuntu-latest
     timeout-minutes: 7
     steps:
