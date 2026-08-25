@@ -1,11 +1,16 @@
 {
   "seen": [
-    "be63220a912aff8902d24206"
+    "be63220a912aff8902d24206",
+    "b8bf8b3dcf841094e33528fe"
   ],
   "published": [
     {
       "item_id": "be63220a912aff8902d24206",
       "message_id": 107
+    },
+    {
+      "item_id": "b8bf8b3dcf841094e33528fe",
+      "message_id": 109
     }
   ],
   "metrics": {}
