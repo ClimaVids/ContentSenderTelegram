@@ -1,33 +1,50 @@
-# Content Sender Telegram
+# ClimaVids Telegram Content Engine
 
-**ClimaVids Content Engine** is an autonomous, Telegram-first content pipeline for the Persian ClimaVids audience.
+**Recommended repository name:** `climavids-telegram-content-engine`
 
-## Current status
+This project is the automated content engine for the Persian **ClimaVids Telegram channel**. It is responsible for collecting relevant public stories, filtering and scoring them, turning them into Persian posts, publishing at most one selected post per Tehran calendar day, persisting state, and monitoring failures.
 
-The project is **live**. GitHub Actions checks the publication schedule every 15 minutes and publishes **at most one selected post per Tehran calendar day** during the daily window starting at 12:00 Asia/Tehran. Manual workflow runs can publish immediately for testing.
+## How it works
 
-The pipeline:
+1. GitHub Actions wakes the publisher every 15 minutes.
+2. The scheduler checks the Tehran local publication window and prevents duplicate daily publication.
+3. Enabled public Telegram sources are collected from `data/sources.json`.
+4. Items are deduplicated and scored for freshness, relevance, public need, credibility, engagement and uniqueness.
+5. The selected item is rendered as a clean Persian post. The public message does **not** include the original source name, external Telegram channel ID, or source link.
+6. The post is sent to `TELEGRAM_CHAT_ID`.
+7. Publication state and runtime diagnostics are persisted for future runs.
+8. A separate owner-monitor workflow checks owner commands and sends morning/night reports.
+9. Publication or monitoring failures trigger an immediate private alert to the owner when `TELEGRAM_OWNER_CHAT_ID` is configured.
 
-1. Collects public Persian content from configured Telegram sources.
-2. Deduplicates previously published items and near-duplicate stories.
-3. Scores candidates using freshness, relevance, public need, credibility, engagement and uniqueness.
-4. Generates a Persian ClimaVids-formatted post.
-5. Publishes one selected post to the configured Telegram chat.
-6. Persists publication state so the same day is not published twice.
+## Owner-only Telegram panel
 
-## Sources
+The bot has a private owner interface. Only the numeric chat ID stored in `TELEGRAM_OWNER_CHAT_ID` is authorized.
 
-The default enabled sources are public Telegram channels configured in `data/sources.json`. Additional RSS/GDELT collectors remain available for future expansion.
+Commands:
 
-## Configuration
+- `/help` — private operating guide
+- `/status` — current status and last publication
+- `/report` — current report
+- `/logs` — runtime diagnostics and recent errors
+- `/test` — verify Bot API access and destination access without publishing a post
 
-Required GitHub repository secrets:
+These commands are not exposed to normal users.
+
+## Required GitHub repository secrets
 
 - `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
+- `TELEGRAM_CHAT_ID` — numeric destination channel/chat ID
+- `TELEGRAM_OWNER_CHAT_ID` — numeric private chat ID of the bot owner
 
-`TELEGRAM_CHAT_ID` must be the numeric ID of the destination channel/chat.
+## Workflows
 
-## Validation
+- `publish.yml` — daily content selection and publication
+- `owner-monitor.yml` — owner-only commands, scheduled reports and private monitoring alerts
+- `manual-publish.yml` — controlled manual publication
+- `live-smoke.yml` — live smoke checks
+- `collector-smoke.yml` — collector checks
+- `ci.yml` — tests, compilation and dry run
 
-CI runs tests, Python compilation and a non-publishing dry run. The live publisher has a dedicated scheduled workflow plus a manual workflow for controlled testing.
+## Important security rule
+
+Never place the bot token, owner chat ID or other secrets in source files, committed state, public posts or logs. The owner monitor deliberately avoids printing secret values.
