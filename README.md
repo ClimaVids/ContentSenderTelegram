@@ -1,50 +1,66 @@
-# ClimaVids Telegram Content Engine
+# ContentSenderTelegram
 
-**Recommended repository name:** `climavids-telegram-content-engine`
+This project is the automated content engine for the Persian **ClimaVids Telegram channel**.
 
-This project is the automated content engine for the Persian **ClimaVids Telegram channel**. It is responsible for collecting relevant public stories, filtering and scoring them, turning them into Persian posts, publishing at most one selected post per Tehran calendar day, persisting state, and monitoring failures.
+## Architecture
 
-## How it works
+- Bot: `@Climavid_bot`
+- Destination channel: `@climavids`
+- Hosting/scheduler: GitHub Actions
+- Required GitHub Secret: `TELEGRAM_BOT_TOKEN` only
+- Publication frequency: at most one selected post per Tehran calendar day
+- Owner control: private Telegram chat, claimed once with `/claim`
 
-1. GitHub Actions wakes the publisher every 15 minutes.
-2. The scheduler checks the Tehran local publication window and prevents duplicate daily publication.
-3. Enabled public Telegram sources are collected from `data/sources.json`.
-4. Items are deduplicated and scored for freshness, relevance, public need, credibility, engagement and uniqueness.
-5. The selected item is rendered as a clean Persian post. The public message does **not** include the original source name, external Telegram channel ID, or source link.
-6. The post is sent to `TELEGRAM_CHAT_ID`.
-7. Publication state and runtime diagnostics are persisted for future runs.
-8. A separate owner-monitor workflow checks owner commands and sends morning/night reports.
-9. Publication or monitoring failures trigger an immediate private alert to the owner when `TELEGRAM_OWNER_CHAT_ID` is configured.
+## Pipeline
 
-## Owner-only Telegram panel
+1. GitHub Actions runs the publisher every 15 minutes.
+2. The scheduler checks the Tehran daily publication window.
+3. Public Telegram sources in `data/sources.json` are collected.
+4. Duplicate and near-duplicate stories are filtered.
+5. Remaining stories are scored for freshness, relevance, public need, credibility, engagement and uniqueness.
+6. One selected story is converted into a Persian ClimaVids post.
+7. The public post contains no original source name, external channel ID, source URL or separate headline.
+8. The post is sent directly to `@climavids`.
+9. Publication state and diagnostics are persisted in the repository.
 
-The bot has a private owner interface. Only the numeric chat ID stored in `TELEGRAM_OWNER_CHAT_ID` is authorized.
+## Private owner panel
 
-Commands:
+The first owner who sends `/claim` to the bot in a private chat becomes the owner. The owner ID is stored in `data/owner_state.json`; no owner Secret is required.
 
-- `/help` — private operating guide
+Available owner commands:
+
+- `/claim` — claim the private chat as the owner panel (one time)
+- `/help` — complete operating guide
 - `/status` — current status and last publication
-- `/report` — current report
-- `/logs` — runtime diagnostics and recent errors
-- `/test` — verify Bot API access and destination access without publishing a post
+- `/report` — detailed current report
+- `/logs` — source counts, pipeline metrics and recent errors
+- `/test` — verify Bot API, `@climavids` and bot membership/admin status without publishing
 
-These commands are not exposed to normal users.
+Normal users do not receive management output. They must not be able to see the owner panel.
 
-## Required GitHub repository secrets
+## Scheduled owner reports
 
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID` — numeric destination channel/chat ID
-- `TELEGRAM_OWNER_CHAT_ID` — numeric private chat ID of the bot owner
+`owner-monitor.yml` checks private commands every 15 minutes and sends:
+
+- morning report around 09:00 Tehran time
+- night report around 21:00 Tehran time
+- immediate private failure alerts when the publisher/monitor fails and an owner has been claimed
 
 ## Workflows
 
-- `publish.yml` — daily content selection and publication
-- `owner-monitor.yml` — owner-only commands, scheduled reports and private monitoring alerts
-- `manual-publish.yml` — controlled manual publication
-- `live-smoke.yml` — live smoke checks
-- `collector-smoke.yml` — collector checks
+- `publish.yml` — scheduled publication
+- `owner-monitor.yml` — owner commands and reports
+- `manual-publish.yml` — manual publication to `@climavids`
+- `live-smoke.yml` — optional live test message to `@climavids`
+- `collector-smoke.yml` — collector test
 - `ci.yml` — tests, compilation and dry run
 
-## Important security rule
+## Setup
 
-Never place the bot token, owner chat ID or other secrets in source files, committed state, public posts or logs. The owner monitor deliberately avoids printing secret values.
+1. Add the token of `@Climavid_bot` as `TELEGRAM_BOT_TOKEN` in GitHub Actions Secrets.
+2. Add `@Climavid_bot` to `@climavids` and make it an administrator with permission to post messages.
+3. Open a private chat with `@Climavid_bot` and send `/claim`.
+4. Send `/test` to verify the connection and destination.
+5. Use `/status` or `/logs` for diagnostics.
+
+Never put the bot token in source code, committed files, public posts or logs.
