@@ -8,6 +8,8 @@ from climavids.owner import OWNER_HELP, build_report, send_owner
 from climavids.pipeline import run
 from climavids.publishers.telegram import TelegramPublisher
 from climavids.state import JsonState
+from pathlib import Path
+import json as _json
 
 
 def _record_metrics(**values: object) -> None:
@@ -17,6 +19,24 @@ def _record_metrics(**values: object) -> None:
     metrics.update(values)
     metrics["last_run"] = datetime.now(timezone.utc).isoformat()
     state.save(data)
+
+
+def _owner_id() -> str:
+    path = Path("data/owner_state.json")
+    if not path.exists():
+        return ""
+    try:
+        data = _json.loads(path.read_text(encoding="utf-8"))
+    except (_json.JSONDecodeError, OSError):
+        return ""
+    return str(data.get("owner_chat_id", "")).strip()
+
+
+def _send_owner_command_report(text: str) -> None:
+    owner_id = _owner_id()
+    if not owner_id:
+        raise RuntimeError("owner is not claimed; send /claim to the bot first")
+    send_owner(owner_id, text)
 
 
 def main() -> None:
@@ -29,7 +49,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command in {"owner-report", "owner-help"}:
-        send_owner(OWNER_HELP if args.command == "owner-help" else build_report())
+        _send_owner_command_report(OWNER_HELP if args.command == "owner-help" else build_report())
         return
 
     if args.command == "health":
@@ -60,12 +80,7 @@ def main() -> None:
             items = run(dry_run=False, limit=1)
             if not items:
                 _record_metrics(last_result="no_candidate", last_candidates=0, last_selected=0)
-                print(
-                    json.dumps(
-                        {"published": False, "reason": "no_candidate"},
-                        ensure_ascii=False,
-                    )
-                )
+                print(json.dumps({"published": False, "reason": "no_candidate"}, ensure_ascii=False))
                 return
 
             draft = items[0]["draft"]
@@ -82,16 +97,7 @@ def main() -> None:
             state.mark_published(draft["item_id"], message_id)
             state.mark_seen(draft["item_id"])
             _record_metrics(last_result="published", last_message_id=message_id)
-            print(
-                json.dumps(
-                    {
-                        "published": True,
-                        "item_id": draft["item_id"],
-                        "message_id": message_id,
-                    },
-                    ensure_ascii=False,
-                )
-            )
+            print(json.dumps({"published": True, "item_id": draft["item_id"], "message_id": message_id}, ensure_ascii=False))
         except Exception as exc:
             _record_metrics(last_result="error", last_error=f"{type(exc).__name__}: {exc}")
             raise
