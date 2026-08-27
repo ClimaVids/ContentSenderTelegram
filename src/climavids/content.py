@@ -46,7 +46,6 @@ def _normalize_text(text: str) -> str:
 
 
 def _strip_source_artifacts(text: str) -> str:
-    """Remove source URLs, handles, source hashtags and attribution fragments."""
     text = MARKDOWN_LINK_RE.sub(" ", text or "")
     text = URL_RE.sub(" ", text)
     text = BARE_DOMAIN_RE.sub(" ", text)
@@ -83,7 +82,7 @@ def _complete_sentence(text: str, max_chars: int) -> str:
     if not text:
         return ""
     if len(text) <= max_chars:
-        return text if text[-1] in TERMINATORS else text + "۔"
+        return text if text[-1] in TERMINATORS else text + "."
 
     sentences = [s.strip() for s in SENTENCE_RE.split(text) if s.strip()]
     kept: list[str] = []
@@ -97,7 +96,7 @@ def _complete_sentence(text: str, max_chars: int) -> str:
     if not kept:
         return ""
     result = "  ".join(kept).strip()
-    return result if result[-1] in TERMINATORS else result + "۔"
+    return result if result[-1] in TERMINATORS else result + "."
 
 
 def _paragraphs(item: NewsItem, label: str, clean_summary: str, style: str) -> list[str]:
@@ -132,7 +131,6 @@ def _footer(style: str) -> str:
 
 
 def _fit_body(core: list[str], footer: str, limit: int = 3900) -> str:
-    """Fit core plus an immutable footer without cutting a paragraph or footer."""
     fixed_footer = footer.strip()
     available = max(400, limit - len(fixed_footer) - 2)
     selected: list[str] = []
@@ -165,13 +163,10 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
     body_parts.append(_hashtags(item))
     footer = _footer(style)
 
-    # Sanitize only the public core. The fixed ClimaVids footer is never passed
-    # through source-artifact stripping, so its official handles remain intact.
     clean_core = [_strip_source_artifacts(part) for part in body_parts]
     clean_core = [part for part in clean_core if part]
     body = _fit_body(clean_core, footer, limit=3900)
 
-    # Defensive invariant: source URLs/handles must not appear in the public core.
     core, separator, _footer_text = body.rpartition("\n\n")
     if separator and (URL_RE.search(core) or BARE_DOMAIN_RE.search(core) or HANDLE_RE.search(core)):
         core = _strip_source_artifacts(core)
