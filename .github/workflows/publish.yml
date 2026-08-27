@@ -36,21 +36,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Validate Telegram credentials
+      - name: Validate Telegram bot token
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
           test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN is missing"; exit 1; }
-          test -n "${TELEGRAM_CHAT_ID:-}" || { echo "TELEGRAM_CHAT_ID is missing"; exit 1; }
-          python - <<'PY'
-          import os
-          chat_id = os.environ["TELEGRAM_CHAT_ID"].strip()
-          if not chat_id.lstrip("-").isdigit():
-              raise SystemExit("TELEGRAM_CHAT_ID must be a numeric Telegram chat id")
-          print("telegram_chat_id_type=integer")
-          PY
 
       - name: Check daily publication window
         id: schedule
@@ -71,12 +62,10 @@ jobs:
           now = datetime.now(TZ)
           manual_run = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
 
-          state = {}
-          if STATE_PATH.exists():
-              try:
-                  state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-              except Exception:
-                  state = {}
+          try:
+              state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+          except Exception:
+              state = {}
 
           published_dates = set(state.get("published_dates", []))
           old_slots = state.get("published_slots", {})
@@ -112,23 +101,22 @@ jobs:
               f.write(f"delay={delay_minutes}\n")
           PY
 
-      - name: Randomized human-like delay
+      - name: Randomized delay
         if: steps.schedule.outputs.publish == 'true'
         run: sleep "${{ steps.schedule.outputs.delay }}m"
 
-      - name: Verify Telegram bot and destination access
+      - name: Verify bot identity and destination access
         if: steps.schedule.outputs.publish == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
           python - <<'PY'
           import os
           import requests
+          from climavids.config import DESTINATION
 
           token = os.environ["TELEGRAM_BOT_TOKEN"]
-          chat_id = int(os.environ["TELEGRAM_CHAT_ID"])
           base = f"https://api.telegram.org/bot{token}"
 
           me = requests.get(f"{base}/getMe", timeout=20)
@@ -137,46 +125,40 @@ jobs:
           if not me_data.get("ok"):
               raise SystemExit(me_data.get("description", "getMe failed"))
           bot = me_data["result"]
-          print(f"telegram_bot_ok=true username=@{bot.get('username', '')}")
+          print(f"BOT_IDENTITY username=@{bot.get('username', '')} id={bot.get('id')}")
 
-          chat = requests.post(f"{base}/getChat", json={"chat_id": chat_id}, timeout=20)
+          chat = requests.post(f"{base}/getChat", json={"chat_id": DESTINATION}, timeout=20)
           chat.raise_for_status()
           chat_data = chat.json()
           if not chat_data.get("ok"):
               raise SystemExit(f"getChat failed: {chat_data.get('description', 'unknown')}")
           target = chat_data["result"]
-          target_type = target.get("type", "unknown")
-          print(f"destination_type={target_type}")
+          print(f"DESTINATION type={target.get('type')} title={target.get('title') or target.get('username')}")
 
           member = requests.post(
               f"{base}/getChatMember",
-              json={"chat_id": chat_id, "user_id": bot["id"]},
+              json={"chat_id": DESTINATION, "user_id": bot["id"]},
               timeout=20,
           )
           member.raise_for_status()
           member_data = member.json()
           if not member_data.get("ok"):
-              raise SystemExit(
-                  f"getChatMember failed: {member_data.get('description', 'unknown')}"
-              )
+              raise SystemExit(f"getChatMember failed: {member_data.get('description', 'unknown')}")
           status = member_data["result"].get("status", "unknown")
-          print(f"bot_membership_status={status}")
+          print(f"BOT_MEMBERSHIP status={status}")
 
           if status in {"left", "kicked"}:
-              raise SystemExit("Bot is not a member of the destination.")
-          if target_type == "channel" and status not in {"administrator", "creator"}:
-              raise SystemExit("Bot must be administrator of the destination channel.")
-          if target_type in {"group", "supergroup"} and status not in {"member", "administrator", "creator"}:
-              raise SystemExit("Bot is not allowed to post in the destination group.")
+              raise SystemExit("Bot is not a member of @climavids.")
+          if target.get("type") == "channel" and status not in {"administrator", "creator"}:
+              raise SystemExit("Bot must be administrator of @climavids.")
 
-          print("telegram_destination_preflight=passed")
+          print("DESTINATION_PREFLIGHT=passed")
           PY
 
       - name: Publish one selected post
         if: steps.schedule.outputs.publish == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
           python -m climavids.cli publish --limit 1
@@ -196,7 +178,6 @@ jobs:
           from zoneinfo import ZoneInfo
 
           path = Path("data/schedule_state.json")
-          path.parent.mkdir(parents=True, exist_ok=True)
           try:
               state = json.loads(path.read_text(encoding="utf-8"))
           except Exception:
@@ -212,9 +193,6 @@ jobs:
               "key": os.environ["PUBLICATION_KEY"],
               "at": datetime.now(ZoneInfo("Asia/Tehran")).isoformat(),
           }
-          old_slots = state.get("published_slots", {})
-          if isinstance(old_slots, dict):
-              state["published_slots"] = dict(sorted(old_slots.items())[-500:])
           path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
           print(f"Recorded publication day: {date}")
           PY
@@ -244,28 +222,37 @@ jobs:
           echo "State persistence failed after 3 attempts." >&2
           exit 1
 
-      - name: Notify owner about failure
+      - name: Report failure to owner from persisted state
         if: failure()
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_OWNER_CHAT_ID: ${{ secrets.TELEGRAM_OWNER_CHAT_ID }}
         run: |
-          set -euo pipefail
-          test -n "${TELEGRAM_BOT_TOKEN:-}" || exit 0
-          test -n "${TELEGRAM_OWNER_CHAT_ID:-}" || exit 0
           python - <<'PY'
+          import json
           import os
+          from pathlib import Path
           import requests
+
+          token = os.environ.get("TELEGRAM_BOT_TOKEN")
+          if not token:
+              raise SystemExit(0)
+          path = Path("data/owner_state.json")
+          if not path.exists():
+              raise SystemExit(0)
+          state = json.loads(path.read_text(encoding="utf-8"))
+          owner = state.get("owner_chat_id")
+          if not owner:
+              raise SystemExit(0)
           text = (
-              "🚨 خطا در ClimaVids Telegram Content Engine\n\n"
-              f"Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\n"
-              f"Job: ${{ github.job }}\n"
-              "لاگ کامل در GitHub Actions موجود است. دستور /logs نیز خلاصه خطاهای ثبت‌شده را نشان می‌دهد."
+              "🚨 ContentSenderTelegram\n\n"
+              "انتشار خودکار با خطا متوقف شد.\n"
+              f"Workflow: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\n"
+              "برای جزئیات، /logs را ارسال کنید."
           )
           requests.post(
-              f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
-              json={"chat_id": int(os.environ["TELEGRAM_OWNER_CHAT_ID"]), "text": text, "disable_web_page_preview": True},
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              json={"chat_id": int(owner), "text": text, "disable_web_page_preview": True},
               timeout=20,
           ).raise_for_status()
           PY
