@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from climavids.config import DESTINATION
 from climavids.private_state import load as load_private, save as save_private
 from climavids.publishers.telegram import TelegramError, TelegramPublisher
+from climavids.remote_network import fetch_destinations
 
 TZ = ZoneInfo("Asia/Tehran")
 DEFAULT_TIMES = ["20:00"]
@@ -53,10 +54,7 @@ def register_destination(chat: dict[str, Any], status: str, bot_id: int | None =
     if entry["posts_per_day"] > MAX_POSTS:
         entry["posts_per_day"] = MAX_POSTS
     if len(entry["times"]) != entry["posts_per_day"]:
-        if len(entry["times"]) < entry["posts_per_day"]:
-            entry["times"] = _fill_times(entry["times"], entry["posts_per_day"])
-        else:
-            entry["times"] = entry["times"][: entry["posts_per_day"]]
+        entry["times"] = _fill_times(entry["times"], entry["posts_per_day"])
     destinations[chat_id] = entry
     data["destinations"] = destinations
     save_private(data)
@@ -88,7 +86,14 @@ def get_destination(chat_id: int | str) -> dict[str, Any] | None:
     return load_private().setdefault("destinations", {}).get(str(chat_id))
 
 
-def active_destinations() -> list[dict[str, Any]]:
+def active_destinations(token: str | None = None) -> list[dict[str, Any]]:
+    token = token or __import__("os").environ.get("TELEGRAM_BOT_TOKEN", "")
+    try:
+        remote = fetch_destinations(token)
+        if remote is not None:
+            return [x for x in remote if x.get("active") and x.get("status") in {"administrator", "creator"}]
+    except Exception as exc:
+        print(f"REMOTE_DESTINATIONS_ERROR {type(exc).__name__}: {exc}")
     destinations = load_private().setdefault("destinations", {})
     return [x for x in destinations.values() if x.get("active") and x.get("status") in {"administrator", "creator"}]
 
@@ -118,14 +123,16 @@ def update_settings(chat_id: int, *, posts_per_day: int | None = None, times: li
     return entry
 
 
-def due_destinations(now: datetime | None = None) -> list[tuple[dict[str, Any], int]]:
+def due_destinations(now: datetime | None = None, token: str | None = None) -> list[tuple[dict[str, Any], int]]:
     now = now or datetime.now(TZ)
     result: list[tuple[dict[str, Any], int]] = []
-    for entry in active_destinations():
+    for entry in active_destinations(token):
         for slot, value in enumerate(entry.get("times", DEFAULT_TIMES), start=1):
-            hh, mm = map(int, value.split(":"))
+            try:
+                hh, mm = map(int, value.split(":"))
+            except (ValueError, AttributeError):
+                continue
             scheduled = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            # A destination is due after its scheduled time. Delivery state prevents duplicates.
             if now >= scheduled:
                 result.append((entry, slot))
     return result
@@ -142,17 +149,13 @@ def delivered(date: str, slot: int, chat_id: int | str) -> bool:
 def mark_delivered(date: str, slot: int, chat_id: int | str, message_id: int) -> None:
     data = load_private()
     delivery = data.setdefault("delivery", {})
-    delivery[delivery_key(date, slot, chat_id)] = {
-        "message_id": message_id,
-        "at": datetime.now(TZ).isoformat(),
-    }
-    # Keep roughly 120 days of delivery history.
+    delivery[delivery_key(date, slot, chat_id)] = {"message_id": message_id, "at": datetime.now(TZ).isoformat()}
     cutoff = datetime.now(TZ) - timedelta(days=120)
     kept: dict[str, Any] = {}
     for key, value in delivery.items():
         try:
-            date = key.split("|", 1)[0]
-            stamp = datetime.fromisoformat(date).replace(tzinfo=TZ)
+            date_value = key.split("|", 1)[0]
+            stamp = datetime.fromisoformat(date_value).replace(tzinfo=TZ)
             if stamp >= cutoff:
                 kept[key] = value
         except (ValueError, TypeError):
