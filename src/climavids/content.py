@@ -150,7 +150,8 @@ def _fit_body(core: list[str], footer: str, limit: int = 3900) -> str:
         first = _complete_sentence(core[0], available)
         if first:
             selected = [first]
-    return f"{'\n\n'.join(selected).strip()}\n\n{fixed_footer}".strip()
+    core_text = "\n\n".join(selected).strip()
+    return f"{core_text}\n\n{fixed_footer}".strip()
 
 
 def render(item: NewsItem, style: str = "news") -> ContentDraft:
@@ -164,16 +165,15 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
     body_parts.append(_hashtags(item))
     footer = _footer(style)
 
-    # Sanitize only the public content core. The fixed ClimaVids footer is never
-    # passed through source-artifact stripping, so its official handles remain.
+    # Sanitize only the public core. The fixed ClimaVids footer is never passed
+    # through source-artifact stripping, so its official handles remain intact.
     clean_core = [_strip_source_artifacts(part) for part in body_parts]
     clean_core = [part for part in clean_core if part]
     body = _fit_body(clean_core, footer, limit=3900)
 
-    # A final invariant: the public body may not contain source URLs/handles.
-    # Check the core only; the fixed footer is intentionally exempt.
-    core, _, _footer_text = body.rpartition("\n\n")
-    if URL_RE.search(core) or BARE_DOMAIN_RE.search(core) or HANDLE_RE.search(core):
+    # Defensive invariant: source URLs/handles must not appear in the public core.
+    core, separator, _footer_text = body.rpartition("\n\n")
+    if separator and (URL_RE.search(core) or BARE_DOMAIN_RE.search(core) or HANDLE_RE.search(core)):
         core = _strip_source_artifacts(core)
         body = f"{core}\n\n{footer}".strip()
 
