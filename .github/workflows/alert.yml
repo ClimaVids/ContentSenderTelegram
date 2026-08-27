@@ -3,13 +3,12 @@ name: ClimaVids Automation Failure Alert
 on:
   workflow_run:
     workflows:
-      - ClimaVids Telegram Publisher
+      - ClimaVids Telegram Network Publisher
       - Collector Smoke Test
       - CI
       - Live Telegram Smoke Test
-      - ClimaVids Owner Monitor
-    types:
-      - completed
+      - ClimaVids Network Monitor
+    types: [completed]
 
 permissions:
   contents: read
@@ -20,67 +19,28 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
     env:
       RUN_URL: ${{ github.event.workflow_run.html_url }}
       WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
       RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-
     steps:
-      - name: Checkout owner state
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
       - name: Create GitHub failure issue
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
           gh issue create \
             --title "🚨 ClimaVids automation failure: ${WORKFLOW_NAME} #${RUN_NUMBER}" \
             --body "Workflow failed.\n\nWorkflow: ${WORKFLOW_NAME}\nRun: ${RUN_NUMBER}\nURL: ${RUN_URL}\n\nThis issue was generated automatically by ContentSenderTelegram."
-
-      - name: Send private Telegram failure alert
+      - name: Send private owner failure alert
         continue-on-error: true
         run: |
           set -euo pipefail
-          test -n "${TELEGRAM_BOT_TOKEN:-}" || exit 0
-          test -f data/owner_state.json || exit 0
-
           python - <<'PY'
-          import json
           import os
-          from pathlib import Path
-          from urllib.request import Request, urlopen
-
-          state = json.loads(Path("data/owner_state.json").read_text(encoding="utf-8"))
-          owner = state.get("owner_chat_id")
-          if not owner:
-              print("owner_not_claimed=true")
-              raise SystemExit(0)
-
-          payload = {
-              "chat_id": int(owner),
-              "text": (
-                  "🚨 ContentSenderTelegram\n\n"
-                  f"Workflow: {os.environ['WORKFLOW_NAME']} #{os.environ['RUN_NUMBER']}\n"
-                  f"{os.environ['RUN_URL']}\n\n"
-                  "برای جزئیات، /logs را ارسال کنید."
-              ),
-              "disable_web_page_preview": True,
-          }
-          req = Request(
-              f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
-              data=json.dumps(payload).encode("utf-8"),
-              headers={"Content-Type": "application/json"},
-              method="POST",
-          )
-          with urlopen(req, timeout=20) as response:
-              result = json.load(response)
-          if not result.get("ok"):
-              raise RuntimeError(result)
-          print("telegram_owner_failure_alert=sent")
+          from climavids.owner import send_failure_alert
+          send_failure_alert(os.environ["RUN_URL"], os.environ["WORKFLOW_NAME"])
           PY
