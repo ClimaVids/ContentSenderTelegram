@@ -1,12 +1,8 @@
-name: Deploy ClimaVids Telegram Bot Interface
+name: Deploy Worker
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - workers/bot-interface/**
-      - .github/workflows/deploy-worker.yml
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,40 +10,23 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy Worker and Telegram webhook
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-
+          node-version: "22"
       - name: Validate Worker
         working-directory: workers/bot-interface
         run: |
-          set -euo pipefail
           node --check src/index.js
           node --check src/entry.js
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -n "$CLOUDFLARE_API_TOKEN"
-          test -n "$TELEGRAM_BOT_TOKEN"
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-
       - name: Deploy Worker
         working-directory: workers/bot-interface
         run: npx --yes wrangler@4.127.0 deploy --config wrangler.jsonc
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
       - name: Store Telegram token
         working-directory: workers/bot-interface
         run: printf '%s' "$TELEGRAM_BOT_TOKEN" | npx --yes wrangler@4.127.0 secret put TELEGRAM_BOT_TOKEN --config wrangler.jsonc
@@ -55,7 +34,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-
       - name: Configure Telegram webhook
         run: |
           set -euo pipefail
@@ -73,6 +51,5 @@ PY
             -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/webhook.json
-          echo
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
