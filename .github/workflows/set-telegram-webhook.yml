@@ -1,0 +1,39 @@
+name: Set ClimaVids Telegram Webhook
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker_url:
+        description: "Public Cloudflare Worker URL, e.g. https://climavids-content-sender-bot.example.workers.dev"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure Telegram webhook
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WORKER_URL: ${{ inputs.worker_url }}
+        run: |
+          set -euo pipefail
+          test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN is missing"; exit 1; }
+          URL="${WORKER_URL%/}/telegram/webhook"
+          SECRET="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | sha256sum | awk '{print $1}')"
+          curl --fail --silent --show-error \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            -H 'Content-Type: application/json' \
+            --data "$(python - <<'PY'
+import json, os
+print(json.dumps({
+    "url": os.environ["URL"],
+    "secret_token": os.environ["SECRET"],
+    "drop_pending_updates": False,
+    "allowed_updates": ["message", "my_chat_member", "channel_post"],
+}))
+PY
+)"
