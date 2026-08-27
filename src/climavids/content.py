@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import re
 
+from climavids.ai import enhance_summary
 from climavids.models import ContentDraft, NewsItem
 
 PERSIAN_STYLES = ["news", "short", "question", "analysis"]
@@ -124,6 +125,7 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
     label = category_label(item.category)
     title = _normalize_text(item.title)
     clean_summary = _normalize_text(item.summary or "")
+    clean_summary = enhance_summary(clean_summary, title, item.category)
 
     # Published Telegram text intentionally contains no headline/title, no
     # source identifier, and no external source channel name or link.
