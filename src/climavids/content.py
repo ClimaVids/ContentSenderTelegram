@@ -18,7 +18,9 @@ CTA_BY_STYLE = {
 SENTENCE_RE = re.compile(r"(?<=[.!؟!?])\s+")
 TERMINATORS = ".!?؟؛"
 URL_RE = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+BARE_DOMAIN_RE = re.compile(r"(?<![@\w])(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?:/[^\s]*)?")
 HANDLE_RE = re.compile(r"(?<!\w)@[A-Za-z0-9_]{3,}")
+HASHTAG_RE = re.compile(r"(?<!\w)#[\wآ-ی_]+")
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
 SOURCE_PHRASE_RE = re.compile(r"(?:\s*[—–-]?\s*)?(?:مشروح\s+خبر|ادامه\s+خبر|جزئیات\s+بیشتر|منبع\s*:?)", re.IGNORECASE)
 
@@ -44,10 +46,12 @@ def _normalize_text(text: str) -> str:
 
 
 def _strip_source_artifacts(text: str) -> str:
-    """Remove source links, Telegram handles, markdown links and attribution fragments."""
+    """Remove URLs, handles, source hashtags, markdown links and attribution fragments."""
     text = MARKDOWN_LINK_RE.sub(" ", text or "")
     text = URL_RE.sub(" ", text)
+    text = BARE_DOMAIN_RE.sub(" ", text)
     text = HANDLE_RE.sub(" ", text)
+    text = HASHTAG_RE.sub(" ", text)
     text = SOURCE_PHRASE_RE.sub(" ", text)
     text = re.sub(r"\s+[|•·]+\s*", " ", text)
     text = re.sub(r"\s+", " ", text)
@@ -65,12 +69,11 @@ def _remove_duplicate_title(summary: str, title: str) -> str:
 
 
 def _repair_leading_fragment(text: str) -> str:
-    """Repair a few common feed truncation artifacts without inventing facts."""
+    """Repair known feed truncation artifacts without inventing facts."""
     text = text.strip()
     replacements = {
         "ار گلستان": "در گلستان",
         "ر گلستان": "در گلستان",
-        "در گلستان،": "در گلستان،",
     }
     for old, new in replacements.items():
         if text.startswith(old):
@@ -79,17 +82,14 @@ def _repair_leading_fragment(text: str) -> str:
 
 
 def _complete_sentence(text: str, max_chars: int) -> str:
-    """Return complete sentences; never deliberately publish a dangling fragment."""
+    """Keep complete sentences and never silently cut the public copy."""
     text = _normalize_text(text)
     if not text:
         return ""
-
-    if len(text) <= max_chars:
-        if text[-1] in TERMINATORS:
-            return text
-        return text + "。"
-
     sentences = [s.strip() for s in SENTENCE_RE.split(text) if s.strip()]
+    if len(text) <= max_chars:
+        return text if text[-1] in TERMINATORS else text + "。"
+
     kept: list[str] = []
     total = 0
     for sentence in sentences:
@@ -98,32 +98,17 @@ def _complete_sentence(text: str, max_chars: int) -> str:
             break
         kept.append(sentence)
         total += extra
-
     if kept:
         result = "  ".join(kept).strip()
         return result if result[-1] in TERMINATORS else result + "。"
-
-    words = text.split()
-    out: list[str] = []
-    total = 0
-    for word in words:
-        extra = len(word) + (1 if out else 0)
-        if total + extra > max_chars:
-            break
-        out.append(word)
-        total += extra
-    result = " ".join(out).strip()
-    return result + "…" if result else ""
+    return ""
 
 
 def _paragraphs(item: NewsItem, label: str, clean_summary: str, style: str) -> list[str]:
     title = _normalize_text(item.title)
-    summary = _strip_source_artifacts(clean_summary)
-    summary = _remove_duplicate_title(summary, title)
-    summary = _repair_leading_fragment(summary)
+    summary = _repair_leading_fragment(_remove_duplicate_title(_strip_source_artifacts(clean_summary), title))
     if not summary:
         summary = _repair_leading_fragment(_strip_source_artifacts(title))
-
     summary = _complete_sentence(summary, 650)
 
     if style == "question":
@@ -153,8 +138,7 @@ def _footer(style: str) -> str:
 
 def _fit_body(core: list[str], footer: str, limit: int = 3900) -> str:
     fixed_footer = footer.strip()
-    reserve = len(fixed_footer) + 2
-    available = max(400, limit - reserve)
+    available = max(400, limit - len(fixed_footer) - 2)
     selected: list[str] = []
     used = 0
     for part in core:
@@ -166,10 +150,11 @@ def _fit_body(core: list[str], footer: str, limit: int = 3900) -> str:
             break
         selected.append(part)
         used += extra
-    if not selected and core:
-        selected = [_complete_sentence(core[0], available)]
-    body_core = "\n\n".join(selected).strip()
-    return f"{body_core}\n\n{fixed_footer}".strip()
+    if not selected and core and available > 0:
+        first = _complete_sentence(core[0], available)
+        if first:
+            selected = [first]
+    return f"{'\\n\\n'.join(selected).strip()}\n\n{fixed_footer}".strip()
 
 
 def render(item: NewsItem, style: str = "news") -> ContentDraft:
@@ -184,19 +169,17 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
     footer = _footer(style)
     body = _fit_body(body_parts, footer, limit=3900)
 
-    # Final safety gate: public output must never expose external URLs/handles.
-    body = _strip_source_artifacts(body)
-    body = body.replace("📩 تبلیغات و همکاری:  ", "📩 تبلیغات و همکاری: ")
-    # Restore only ClimaVids handles that are intentionally part of the fixed footer.
+    # Final public-output sanitization. Only the fixed ClimaVids footer may contain our handles.
+    core, _, fixed = body.rpartition("\n\n")
+    core = _strip_source_artifacts(core)
+    body = f"{core}\n\n{fixed}".strip()
     body = body.replace("📩 تبلیغات و همکاری: Clima_Vids", "📩 تبلیغات و همکاری: @Clima_Vids")
     body = body.replace("🔗 ایمانی‌پور | climavids", "🔗 ایمانی‌پور | @climavids")
 
-    # Re-check final length without truncating the fixed footer.
     if len(body) > 3900:
-        core_limit = 3900 - len(footer) - 2
-        core = body_parts
-        core[0] = _complete_sentence(_strip_source_artifacts(core[0]), max(400, core_limit))
-        body = _fit_body(core, footer, limit=3900)
+        body = _fit_body([core], footer, limit=3900)
+        body = body.replace("📩 تبلیغات و همکاری: Clima_Vids", "📩 تبلیغات و همکاری: @Clima_Vids")
+        body = body.replace("🔗 ایمانی‌پور | climavids", "🔗 ایمانی‌پور | @climavids")
 
     return ContentDraft(
         item_id=item.id,
