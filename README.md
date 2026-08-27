@@ -1,4 +1,4 @@
-# ClimaVids Content Engine v0.2.0
+# Content Sender Telegram
 
 This repository is the autonomous, resilient content engine for the Persian ClimaVids audience. The project is Telegram-first, growth-oriented, free-first, and designed so external providers can be replaced without rewriting the core.
 
