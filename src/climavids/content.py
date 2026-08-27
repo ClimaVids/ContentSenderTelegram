@@ -6,8 +6,8 @@ import re
 from climavids.models import ContentDraft, NewsItem
 
 PERSIAN_STYLES = ["news", "short", "question", "analysis"]
-DEFAULT_FOOTER = "🔗 ایمانی‌پور | @ClimaVids"
-DEFAULT_CHANNEL_LINK = "🔗 https://t.me/climavid"
+DEFAULT_FOOTER = "🔗 ایمانی‌پور | @climavids"
+DEFAULT_CHANNEL_LINK = "🔗 https://t.me/climavids"
 AD_HANDLE = "@Clima_Vids"
 CTA_BY_STYLE = {
     "news": "👥 عضو کانال شو تا از تازه‌ترین خبرها جا نمونی!\n📩 برای تبلیغات و همکاری: @Clima_Vids",
@@ -56,7 +56,6 @@ def _remove_duplicate_title(summary: str, title: str) -> str:
 
 
 def _sentence_complete(text: str, max_chars: int) -> str:
-    """Clip only at a sentence boundary whenever clipping is required."""
     text = _normalize_text(text)
     if len(text) <= max_chars:
         return text
@@ -71,8 +70,6 @@ def _sentence_complete(text: str, max_chars: int) -> str:
         total += extra
     if kept:
         return "  ".join(kept).strip()
-    # No sentence boundary exists; use a word boundary without inventing a
-    # dangling sentence fragment.
     words = text.split()
     out: list[str] = []
     total = 0
@@ -153,8 +150,6 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
     body_parts.append(_hashtags(item))
     body_parts.append(_footer(style))
 
-    # Keep the complete output below Telegram's text limit while preserving
-    # paragraph and sentence boundaries. This fallback is only defensive.
     body = "\n\n".join(body_parts)
     if len(body) > 3900:
         body_parts[1] = f"📰 {_sentence_complete(_remove_duplicate_title(clean_summary, title), 360)}"
