@@ -56,7 +56,8 @@ def ensure_primary_destination(token: str) -> dict[str, Any]:
     private = load_private()
     destinations = private.setdefault("destinations", {})
     chat_id = str(chat["id"])
-    entry = destinations.get(chat_id, {})
+    old = destinations.get(chat_id, {})
+    entry = dict(old)
     entry.update(
         {
             "chat_id": int(chat["id"]),
@@ -65,16 +66,18 @@ def ensure_primary_destination(token: str) -> dict[str, Any]:
             "type": chat.get("type", "channel"),
             "status": status,
             "active": True,
-            "posts_per_day": int(entry.get("posts_per_day", 1)),
-            "times": entry.get("times", ["20:00"]),
+            "posts_per_day": int(old.get("posts_per_day", 1)),
+            "times": old.get("times", ["20:00"]),
             "is_primary": True,
-            "added_at": entry.get("added_at") or datetime.now(TZ).isoformat(),
-            "updated_at": datetime.now(TZ).isoformat(),
+            "added_at": old.get("added_at") or datetime.now(TZ).isoformat(),
         }
     )
-    destinations[chat_id] = entry
-    private["destinations"] = destinations
-    save_private(private)
+    changed = entry != old
+    if changed:
+        entry["updated_at"] = datetime.now(TZ).isoformat()
+        destinations[chat_id] = entry
+        private["destinations"] = destinations
+        save_private(private)
     return entry
 
 
@@ -93,7 +96,6 @@ def publish_due(token: str) -> dict[str, Any]:
 
     attempted = sent = failed = 0
     errors: list[str] = []
-
     for entry, slot in selected.values():
         attempted += 1
         date = now.strftime("%Y-%m-%d")
