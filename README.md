@@ -1,50 +1,71 @@
-# ClimaVids Telegram Content Engine
+# ContentSenderTelegram
 
-**Recommended repository name:** `climavids-telegram-content-engine`
+ربات و موتور توزیع محتوای فارسی **ClimaVids** برای کانال اصلی و گروه‌ها/کانال‌های همکار.
 
-This project is the automated content engine for the Persian **ClimaVids Telegram channel**. It is responsible for collecting relevant public stories, filtering and scoring them, turning them into Persian posts, publishing at most one selected post per Tehran calendar day, persisting state, and monitoring failures.
+## معماری فعلی
 
-## How it works
+- تنها Secret لازم: `TELEGRAM_BOT_TOKEN`
+- مقصد اصلی برند: `@climavids`
+- هر گروه یا کانالی که Bot را Administrator کند، هنگام دریافت رویداد Telegram به‌صورت خودکار شناسایی و ثبت می‌شود.
+- مقصد تازه‌ثبت‌شده به‌صورت پیش‌فرض **۱ پست در روز، ساعت ۲۰:۰۰ به وقت تهران** دریافت می‌کند.
+- مدیر هر گروه می‌تواند تعداد پست را بین ۱ تا ۳ و زمان‌های ارسال همان مقصد را تنظیم کند.
+- محتوای یکسان ClimaVids در مقصدهای فعال توزیع می‌شود؛ زمان‌بندی هر مقصد مستقل است.
+- هر مقصد در هر اجرای Workflow حداکثر یک انتشار جبرانی دریافت می‌کند تا در صورت تأخیر، چندین پست پشت سر هم ارسال نشود.
+- وضعیت خصوصی شبکه شامل نام، شناسه، نوع مقصد، تنظیمات و سابقه تحویل با کلیدی مشتق‌شده از Bot Token رمزنگاری می‌شود و به‌صورت ciphertext در `data/private_state.enc` نگهداری می‌شود؛ اطلاعات خصوصی به‌صورت plaintext در Repository ذخیره نمی‌شود.
 
-1. GitHub Actions wakes the publisher every 15 minutes.
-2. The scheduler checks the Tehran local publication window and prevents duplicate daily publication.
-3. Enabled public Telegram sources are collected from `data/sources.json`.
-4. Items are deduplicated and scored for freshness, relevance, public need, credibility, engagement and uniqueness.
-5. The selected item is rendered as a clean Persian post. The public message does **not** include the original source name, external Telegram channel ID, or source link.
-6. The post is sent to `TELEGRAM_CHAT_ID`.
-7. Publication state and runtime diagnostics are persisted for future runs.
-8. A separate owner-monitor workflow checks owner commands and sends morning/night reports.
-9. Publication or monitoring failures trigger an immediate private alert to the owner when `TELEGRAM_OWNER_CHAT_ID` is configured.
+## تجربه کاربری مدیران
 
-## Owner-only Telegram panel
+در گروه/سوپرگروه:
 
-The bot has a private owner interface. Only the numeric chat ID stored in `TELEGRAM_OWNER_CHAT_ID` is authorized.
+- `/help` — راهنمای فارسی
+- `/setup` — تنظیمات همین مقصد
+- `/posts 1` — یک پست در روز
+- `/posts 2` — دو پست در روز
+- `/posts 3` — سه پست در روز
+- `/times 10:00` — تعیین ساعت برای یک پست
+- `/times 10:00 20:00` — تعیین دو ساعت برای دو پست
+- `/times 10:00 20:00 22:00` — تعیین سه ساعت برای سه پست
+- `/on` — فعال‌سازی ارسال
+- `/off` — توقف موقت ارسال
 
-Commands:
+فقط مدیران همان مقصد می‌توانند تنظیمات آن مقصد را تغییر دهند. کاربران عادی فقط راهنمای عمومی را می‌بینند.
 
-- `/help` — private operating guide
-- `/status` — current status and last publication
-- `/report` — current report
-- `/logs` — runtime diagnostics and recent errors
-- `/test` — verify Bot API access and destination access without publishing a post
+برای کانال‌ها، ثبت مقصد هنگام Administrator شدن Bot انجام می‌شود و ارسال با تنظیمات پیش‌فرض فعال می‌گردد. تنظیمات پیشرفته کانال را می‌توان از طریق مسیر مدیریتی مناسب در نسخه‌های بعدی گسترش داد.
 
-These commands are not exposed to normal users.
+## پنل خصوصی مالک
 
-## Required GitHub repository secrets
+مالک ربات در گفت‌وگوی خصوصی یک بار `/claim` را ارسال می‌کند. پس از آن فرمان‌های زیر فقط برای همان Chat خصوصی پاسخ داده می‌شوند:
 
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID` — numeric destination channel/chat ID
-- `TELEGRAM_OWNER_CHAT_ID` — numeric private chat ID of the bot owner
+- `/status` — وضعیت کلی موتور
+- `/report` — گزارش کامل
+- `/network` — تعداد و نام گروه‌ها و کانال‌های فعال
+- `/logs` — جزئیات فنی و خطاها
+- `/health` — بررسی سلامت شبکه
+- `/help` — راهنمای مالک
 
-## Workflows
+گزارش‌های صبحگاهی و شبانه نیز به‌صورت خودکار برای مالک ارسال می‌شوند.
 
-- `publish.yml` — daily content selection and publication
-- `owner-monitor.yml` — owner-only commands, scheduled reports and private monitoring alerts
-- `manual-publish.yml` — controlled manual publication
-- `live-smoke.yml` — live smoke checks
-- `collector-smoke.yml` — collector checks
-- `ci.yml` — tests, compilation and dry run
+### توجه امنیتی درباره `/claim`
 
-## Important security rule
+مالک باید اولین فردی باشد که پس از راه‌اندازی ربات در گفت‌وگوی خصوصی `/claim` را ارسال می‌کند؛ زیرا Telegram Bot API هویت «صاحب Bot Token» را به‌صورت جداگانه در پیام‌ها اعلام نمی‌کند. پس از ثبت، مالک در state رمزنگاری‌شده قفل می‌شود.
 
-Never place the bot token, owner chat ID or other secrets in source files, committed state, public posts or logs. The owner monitor deliberately avoids printing secret values.
+## Workflowها
+
+- `publish.yml` — توزیع محتوای مشترک در شبکه
+- `owner-monitor.yml` — دریافت رویدادهای Telegram، ثبت مقصدها، اجرای فرمان‌های مدیر/مالک و گزارش‌های مالک
+- `manual-publish.yml` — اجرای دستی توزیع
+- `live-smoke.yml` — تست اتصال Bot به کانال اصلی
+- `collector-smoke.yml` — تست collectorها
+- `ci.yml` — تست، compile و dry-run
+
+## محتوای عمومی
+
+پست‌های عمومی عمداً **بدون تیتر جداگانه، نام/شناسه کانال منبع و لینک منبع خارجی** منتشر می‌شوند تا مخاطب برای مطالعه بیشتر به کانال‌های دیگر هدایت نشود.
+
+## راه‌اندازی
+
+تنها Secret موردنیاز:
+
+`TELEGRAM_BOT_TOKEN`
+
+Bot را روی `@climavids` Administrator کنید. سپس Bot را به هر گروه/کانالی که می‌خواهید محتوای ClimaVids را دریافت کند اضافه و Administrator کنید.
