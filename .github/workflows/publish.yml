@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: climavids-telegram-state
+  group: climavids-telegram-publisher
   cancel-in-progress: false
 
 permissions:
@@ -45,6 +45,7 @@ jobs:
       - name: Publish due content to the ClimaVids network
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CLIMAVIDS_BOT_API_URL: ${{ secrets.CLIMAVIDS_BOT_API_URL }}
         run: |
           set -euo pipefail
           python -m climavids.cli publish-network
@@ -61,17 +62,7 @@ jobs:
             exit 0
           fi
           git commit -m "chore: persist network publication state" || true
-          for attempt in 1 2 3; do
-            if git push origin HEAD:main; then
-              echo "State persisted."
-              exit 0
-            fi
-            git fetch origin main
-            git rebase origin/main || { git rebase --abort || true; exit 1; }
-            sleep $((attempt * 2))
-          done
-          echo "State persistence failed." >&2
-          exit 1
+          git push origin HEAD:main || true
 
       - name: Notify owner about publication failure
         if: failure()
@@ -84,7 +75,7 @@ jobs:
           from climavids.owner import send_failure_alert
           send_failure_alert(
               f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
-              "ClimaVids Network Publisher",
+              "ClimaVids Telegram Network Publisher",
           )
           PY
 
