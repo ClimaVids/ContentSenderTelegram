@@ -2,10 +2,11 @@ name: Deploy ClimaVids Telegram Bot Interface
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - "workers/bot-interface/**"
-      - ".github/workflows/deploy-worker.yml"
+      - workers/bot-interface/**
+      - .github/workflows/deploy-worker.yml
   workflow_dispatch:
 
 permissions:
@@ -13,15 +14,9 @@ permissions:
 
 jobs:
   deploy:
+    name: Deploy Worker and Telegram webhook
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: workers/bot-interface
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
     steps:
       - name: Checkout
@@ -32,30 +27,38 @@ jobs:
         with:
           node-version: 22
 
-      - name: Validate configuration
+      - name: Validate Worker
+        working-directory: workers/bot-interface
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID is missing"; exit 1; }
-          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_API_TOKEN is missing"; exit 1; }
-          test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN is missing"; exit 1; }
           node --check src/index.js
           node --check src/entry.js
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$TELEGRAM_BOT_TOKEN"
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-      - name: Deploy Worker with Wrangler
-        run: |
-          set -euo pipefail
-          npx --yes wrangler@4.127.0 deploy --config wrangler.jsonc
+      - name: Deploy Worker
+        working-directory: workers/bot-interface
+        run: npx --yes wrangler@4.127.0 deploy --config wrangler.jsonc
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Store Telegram bot token in Worker
-        run: |
-          set -euo pipefail
-          printf '%s' "$TELEGRAM_BOT_TOKEN" | npx --yes wrangler@4.127.0 secret put TELEGRAM_BOT_TOKEN --config wrangler.jsonc
+      - name: Store Telegram token
+        working-directory: workers/bot-interface
+        run: printf '%s' "$TELEGRAM_BOT_TOKEN" | npx --yes wrangler@4.127.0 secret put TELEGRAM_BOT_TOKEN --config wrangler.jsonc
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
       - name: Configure Telegram webhook
-        working-directory: .
         run: |
           set -euo pipefail
-          URL="https://climavids-content-sender-bot.birjand-climate.workers.dev/telegram/webhook"
           export SECRET="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | sha256sum | awk '{print $1}')"
           python - <<'PY' > /tmp/webhook.json
 import json, os
@@ -71,4 +74,5 @@ PY
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/webhook.json
           echo
-          echo "Webhook configured: $URL"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
