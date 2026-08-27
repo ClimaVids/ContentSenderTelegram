@@ -1,27 +1,39 @@
-name: Manual Publish
+name: Manual Network Publish
 
 on:
   workflow_dispatch:
+
+concurrency:
+  group: climavids-telegram-state
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-
+        with:
+          persist-credentials: true
+          fetch-depth: 0
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install dependencies
-        run: |
-          pip install -e .
-
-      - name: Publish to Telegram
+        run: pip install -e .
+      - name: Publish due content
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m climavids.cli publish-network
+      - name: Persist state
+        if: always()
         run: |
-          python -m climavids.cli publish
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f data/state.json data/private_state.enc 2>/dev/null || true
+          if ! git diff --cached --quiet; then git commit -m "chore: persist manual network publish state"; fi
+          git push origin HEAD:main || true
