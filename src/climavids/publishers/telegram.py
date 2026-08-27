@@ -6,22 +6,20 @@ from typing import Any
 
 import requests
 
+from climavids.config import DESTINATION
+
 
 class TelegramError(RuntimeError):
     pass
 
 
 class TelegramPublisher:
-    def __init__(self, token: str | None = None, chat_id: str | None = None, timeout: int = 20):
+    def __init__(self, token: str | None = None, chat_id: str = DESTINATION, timeout: int = 20):
         self.token = token or os.getenv("TELEGRAM_BOT_TOKEN")
-        self.chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
+        self.chat_id = chat_id or DESTINATION
         self.timeout = timeout
         if not self.token:
             raise TelegramError("TELEGRAM_BOT_TOKEN is not configured")
-        if not self.chat_id:
-            raise TelegramError("TELEGRAM_CHAT_ID is not configured")
-        if not self.chat_id.strip().lstrip("-").isdigit():
-            raise TelegramError("TELEGRAM_CHAT_ID must be the numeric Telegram chat id")
 
     def _request(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"https://api.telegram.org/bot{self.token}/{method}"
@@ -59,16 +57,26 @@ class TelegramPublisher:
     def check(self) -> dict[str, Any]:
         return self._request("getMe", {})
 
+    def destination_check(self) -> dict[str, Any]:
+        return self._request("getChat", {"chat_id": self.chat_id})
+
+    def bot_membership(self) -> dict[str, Any]:
+        me = self.check().get("result", {})
+        bot_id = me.get("id")
+        if not bot_id:
+            raise TelegramError("Telegram did not return bot id")
+        return self._request("getChatMember", {"chat_id": self.chat_id, "user_id": bot_id})
+
     def send_text(self, text: str, max_retries: int = 3) -> dict[str, Any]:
-        payload = {"chat_id": int(self.chat_id), "text": text, "disable_web_page_preview": False}
+        if not text.strip():
+            raise TelegramError("cannot publish empty text")
+        payload = {"chat_id": self.chat_id, "text": text, "disable_web_page_preview": False}
         for attempt in range(max_retries):
             try:
                 return self._request("sendMessage", payload)
             except TelegramError as exc:
                 if attempt == max_retries - 1:
                     raise
-                # Retry transient transport/5xx/rate-limit failures; keep the
-                # backoff bounded so a long-lived scheduled job cannot stall.
                 if "status=4" in str(exc) and "status=429" not in str(exc):
                     raise
                 time.sleep(2 ** attempt)
