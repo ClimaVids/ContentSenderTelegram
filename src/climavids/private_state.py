@@ -21,16 +21,35 @@ def _fernet() -> Fernet:
     return Fernet(key)
 
 
+def _empty() -> dict[str, Any]:
+    return {
+        "owner_chat_id": None,
+        "destinations": {},
+        "delivery": {},
+        "slot_content": {},
+        "scheduled_reports": [],
+        "update_offset": 0,
+        "token_generation": "current",
+    }
+
+
 def load() -> dict[str, Any]:
     if not STATE_PATH.exists():
-        return {"owner_chat_id": None, "destinations": {}, "delivery": {}, "slot_content": {}, "scheduled_reports": []}
+        return _empty()
     try:
         encrypted = STATE_PATH.read_bytes()
         raw = _fernet().decrypt(encrypted)
         data = json.loads(raw.decode("utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, InvalidToken, json.JSONDecodeError):
-        raise RuntimeError("private state is unreadable or the bot token changed")
+        if not isinstance(data, dict):
+            raise RuntimeError("private state is not a JSON object")
+        return data
+    except InvalidToken:
+        # The bot token was changed. The previous encrypted state cannot be
+        # decrypted by design, so start a fresh private state and let the
+        # current owner claim the bot again with /claim.
+        return _empty()
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"private state is unreadable: {exc}") from exc
 
 
 def save(data: dict[str, Any]) -> None:
@@ -45,13 +64,7 @@ def save(data: dict[str, Any]) -> None:
 def ensure() -> dict[str, Any]:
     data = load()
     changed = False
-    for key, default in {
-        "owner_chat_id": None,
-        "destinations": {},
-        "delivery": {},
-        "slot_content": {},
-        "scheduled_reports": [],
-    }.items():
+    for key, default in _empty().items():
         if key not in data:
             data[key] = default
             changed = True
