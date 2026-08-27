@@ -1,10 +1,11 @@
 [project]
-name = "climavids-telegram-content-engine"
-version = "0.4.0"
-description = "Automated Persian content engine for the ClimaVids Telegram channel"
+name = "climavids-content-sender-telegram"
+version = "0.5.0"
+description = "Automated Persian content distribution engine for ClimaVids Telegram destinations"
 requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4==4.13.4",
+  "cryptography==45.0.7",
   "feedparser==6.0.11",
   "pydantic==2.11.7",
   "requests==2.32.4",
