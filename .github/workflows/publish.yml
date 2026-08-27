@@ -1,9 +1,6 @@
 name: ClimaVids Telegram Publisher
 
 on:
-  # GitHub Actions scheduled workflows use UTC cron. We intentionally
-  # check every 15 minutes and calculate the local Tehran publication
-  # window inside the job, so a delayed cron run does not lose the day.
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
@@ -45,20 +42,10 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
-
-          test -n "${TELEGRAM_BOT_TOKEN:-}" || {
-            echo "TELEGRAM_BOT_TOKEN is missing"
-            exit 1
-          }
-
-          test -n "${TELEGRAM_CHAT_ID:-}" || {
-            echo "TELEGRAM_CHAT_ID is missing"
-            exit 1
-          }
-
+          test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN is missing"; exit 1; }
+          test -n "${TELEGRAM_CHAT_ID:-}" || { echo "TELEGRAM_CHAT_ID is missing"; exit 1; }
           python - <<'PY'
           import os
-
           chat_id = os.environ["TELEGRAM_CHAT_ID"].strip()
           if not chat_id.lstrip("-").isdigit():
               raise SystemExit("TELEGRAM_CHAT_ID must be a numeric Telegram chat id")
@@ -81,10 +68,8 @@ jobs:
           END_TIME = time(23, 50)
           STATE_PATH = Path("data/schedule_state.json")
           STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-
           now = datetime.now(TZ)
-          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-          manual_run = event_name == "workflow_dispatch"
+          manual_run = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
 
           state = {}
           if STATE_PATH.exists():
@@ -93,11 +78,7 @@ jobs:
               except Exception:
                   state = {}
 
-          # New format: one successful publication per Tehran calendar day.
           published_dates = set(state.get("published_dates", []))
-          today = now.strftime("%Y-%m-%d")
-
-          # Backward compatibility with the previous slot-based state.
           old_slots = state.get("published_slots", {})
           if isinstance(old_slots, dict):
               published_dates.update(
@@ -106,28 +87,24 @@ jobs:
                   if isinstance(key, str) and "|" in key
               )
 
+          today = now.strftime("%Y-%m-%d")
           should_publish = manual_run or (
               START_TIME <= now.timetz().replace(tzinfo=None) <= END_TIME
               and today not in published_dates
           )
 
           if not should_publish:
-              print(
-                  f"publish=false local_time={now.strftime('%Y-%m-%d %H:%M:%S %Z')}"
-              )
+              print(f"publish=false local_time={now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                   f.write("publish=false\n")
               raise SystemExit(0)
 
           delay_minutes = 0 if manual_run else random.randint(0, 5)
           publication_key = f"manual-{now.strftime('%Y%m%d-%H%M%S')}" if manual_run else today
-
           print(
               f"publish=true date={today} key={publication_key} "
-              f"local_time={now.strftime('%Y-%m-%d %H:%M:%S %Z')} "
-              f"delay_minutes={delay_minutes}"
+              f"local_time={now.strftime('%Y-%m-%d %H:%M:%S %Z')} delay_minutes={delay_minutes}"
           )
-
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write("publish=true\n")
               f.write(f"publication_key={publication_key}\n")
@@ -139,9 +116,7 @@ jobs:
         if: steps.schedule.outputs.publish == 'true'
         run: |
           set -euo pipefail
-          DELAY="${{ steps.schedule.outputs.delay }}"
-          echo "Waiting ${DELAY} minute(s) before Telegram publication..."
-          sleep "${DELAY}m"
+          sleep "${{ steps.schedule.outputs.delay }}m"
 
       - name: Verify Telegram bot access
         if: steps.schedule.outputs.publish == 'true'
@@ -152,13 +127,9 @@ jobs:
           python - <<'PY'
           import os
           import requests
-
           token = os.environ["TELEGRAM_BOT_TOKEN"]
           chat_id = os.environ["TELEGRAM_CHAT_ID"]
-          response = requests.get(
-              f"https://api.telegram.org/bot{token}/getMe",
-              timeout=20,
-          )
+          response = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=20)
           response.raise_for_status()
           data = response.json()
           if not data.get("ok"):
@@ -183,7 +154,6 @@ jobs:
           PUBLICATION_KEY: ${{ steps.schedule.outputs.publication_key }}
         run: |
           set -euo pipefail
-
           python - <<'PY'
           import json
           import os
@@ -193,7 +163,6 @@ jobs:
 
           path = Path("data/schedule_state.json")
           path.parent.mkdir(parents=True, exist_ok=True)
-
           try:
               state = json.loads(path.read_text(encoding="utf-8"))
           except Exception:
@@ -204,22 +173,15 @@ jobs:
           if date not in published_dates:
               published_dates.append(date)
           state["published_dates"] = sorted(set(published_dates))[-180:]
-
           state["last_publication"] = {
               "date": date,
               "key": os.environ["PUBLICATION_KEY"],
               "at": datetime.now(ZoneInfo("Asia/Tehran")).isoformat(),
           }
-
-          # Keep old slot history intact for traceability, but cap it.
           old_slots = state.get("published_slots", {})
           if isinstance(old_slots, dict):
               state["published_slots"] = dict(sorted(old_slots.items())[-500:])
-
-          path.write_text(
-              json.dumps(state, ensure_ascii=False, indent=2),
-              encoding="utf-8",
-          )
+          path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
           print(f"Recorded publication day: {date}")
           PY
 
@@ -227,40 +189,54 @@ jobs:
         if: steps.schedule.outputs.publish == 'true'
         run: |
           set -euo pipefail
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add -f data/state.json data/schedule_state.json 2>/dev/null || true
-
           if git diff --cached --quiet; then
             echo "No state changes to persist."
             exit 0
           fi
-
           git commit -m "chore: persist publication state"
-
           for attempt in 1 2 3; do
             if git push origin HEAD:main; then
               echo "State successfully persisted."
               exit 0
             fi
-
             echo "Push attempt ${attempt} failed; synchronizing with main..."
             git fetch origin main
-
-            git rebase origin/main || {
-              git rebase --abort || true
-              exit 1
-            }
-
+            git rebase origin/main || { git rebase --abort || true; exit 1; }
             sleep $((attempt * 2))
           done
-
           echo "State persistence failed after 3 attempts." >&2
           exit 1
 
-      - name: Report failure
+      - name: Notify owner about failure
+        if: failure()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_OWNER_CHAT_ID: ${{ secrets.TELEGRAM_OWNER_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "${TELEGRAM_BOT_TOKEN:-}" || exit 0
+          test -n "${TELEGRAM_OWNER_CHAT_ID:-}" || exit 0
+          python - <<'PY'
+          import os
+          import requests
+          text = (
+              "🚨 خطا در ClimaVids Telegram Content Engine\n\n"
+              f"Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\n"
+              f"Job: ${{ github.job }}\n"
+              "لاگ کامل در GitHub Actions موجود است. دستور /logs نیز خلاصه خطاهای ثبت‌شده را نشان می‌دهد."
+          )
+          requests.post(
+              f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+              json={"chat_id": int(os.environ["TELEGRAM_OWNER_CHAT_ID"]), "text": text, "disable_web_page_preview": True},
+              timeout=20,
+          ).raise_for_status()
+          PY
+
+      - name: Report failure to GitHub Issue
         if: failure()
         continue-on-error: true
         env:
