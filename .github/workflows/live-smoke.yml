@@ -8,51 +8,44 @@ permissions:
 
 jobs:
   smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'test: live telegram smoke' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Validate Telegram identity and publish
+      - name: Validate Telegram identity and publish test
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         shell: bash
         run: |
           set -euo pipefail
           test -n "${TELEGRAM_BOT_TOKEN:-}"
-          test -n "${TELEGRAM_CHAT_ID:-}"
           python - <<'PY'
-import json, os
-from urllib.request import Request, urlopen
+          import json, os
+          from urllib.request import Request, urlopen
 
-chat_id = os.environ["TELEGRAM_CHAT_ID"].strip()
-assert chat_id.lstrip("-").isdigit(), "TELEGRAM_CHAT_ID must be a numeric Telegram chat id"
-base = f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}"
-with urlopen(Request(f"{base}/getMe"), timeout=20) as response:
-    me = json.load(response)
-assert me.get('ok') is True, me
+          base = f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}"
+          with urlopen(Request(f"{base}/getMe"), timeout=20) as response:
+              me = json.load(response)
+          assert me.get('ok') is True, me
 
-text = (
-    "✅ ClimaVids Content Engine — تست واقعی انتشار خودکار\n\n"
-    "این پیام توسط سیستم خودکار ClimaVids منتشر شد.\n\n"
-    "برای همکاری و تبلیغات پیام دهید\n"
-    "ایمانی‌پور | @ClimaVids"
-)
-payload = {"chat_id": int(chat_id), "text": text}
-req = Request(
-    f"{base}/sendMessage",
-    data=json.dumps(payload).encode(),
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-with urlopen(req, timeout=20) as response:
-    result = json.load(response)
-assert result.get("ok") is True, result
-message_id = int(result["result"]["message_id"])
-url = f"https://t.me/climavids/{message_id}"
-print(f"telegram_ok=true message_id={message_id} url={url}")
-open("smoke_url.txt", "w", encoding="utf-8").write(url + "\n")
-PY
+          text = (
+              "✅ ContentSenderTelegram — تست واقعی انتشار\n\n"
+              "این پیام برای بررسی اتصال ربات به کانال ClimaVids منتشر شده است."
+          )
+          payload = {"chat_id": "@climavids", "text": text}
+          req = Request(
+              f"{base}/sendMessage",
+              data=json.dumps(payload).encode(),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urlopen(req, timeout=20) as response:
+              result = json.load(response)
+          assert result.get("ok") is True, result
+          message_id = int(result["result"]["message_id"])
+          url = f"https://t.me/climavids/{message_id}"
+          print(f"telegram_ok=true username=@{me['result'].get('username','')} message_id={message_id} url={url}")
+          open("smoke_url.txt", "w", encoding="utf-8").write(url + "\n")
+          PY
 
       - name: Upload smoke result
         if: always()
