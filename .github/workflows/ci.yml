@@ -29,3 +29,53 @@ jobs:
         run: python -m compileall -q src
       - name: Dry run
         run: python -m climavids.cli dry-run --limit 3
+
+      - name: Setup Node for Worker
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate Worker
+        working-directory: workers/bot-interface
+        run: |
+          node --check src/index.js
+          node --check src/entry.js
+
+      - name: Deploy Worker
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        working-directory: workers/bot-interface
+        run: npx --yes wrangler@4.127.0 deploy --config wrangler.jsonc
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Store Telegram token
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        working-directory: workers/bot-interface
+        run: printf '%s' "$TELEGRAM_BOT_TOKEN" | npx --yes wrangler@4.127.0 secret put TELEGRAM_BOT_TOKEN --config wrangler.jsonc
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      - name: Configure Telegram webhook
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          export SECRET="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | sha256sum | awk '{print $1}')"
+          python - <<'PY' > /tmp/webhook.json
+import json, os
+print(json.dumps({
+    "url": "https://climavids-content-sender-bot.birjand-climate.workers.dev/telegram/webhook",
+    "secret_token": os.environ["SECRET"],
+    "drop_pending_updates": False,
+    "allowed_updates": ["message", "my_chat_member", "channel_post"],
+}))
+PY
+          curl --fail --silent --show-error \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/webhook.json
+          echo
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
