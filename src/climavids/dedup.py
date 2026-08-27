@@ -1,6 +1,5 @@
 import hashlib
 import re
-from collections import defaultdict
 
 from climavids.models import NewsItem
 
