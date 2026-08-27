@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       worker_url:
-        description: "Public Cloudflare Worker URL, e.g. https://climavids-content-sender-bot.example.workers.dev"
+        description: "Public Cloudflare Worker URL"
         required: true
         type: string
 
