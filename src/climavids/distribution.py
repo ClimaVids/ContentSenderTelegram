@@ -116,7 +116,7 @@ def publish_due(token: str, force: bool = False) -> dict[str, Any]:
     now = datetime.now(TZ)
     if force:
         active = [x for x in active_destinations(token) if x.get("active")]
-        selected = [(entry, 1) for entry in active if not delivered(now.strftime("%Y-%m-%d"), 1, entry["chat_id"])]
+        selected = [(entry, 1) for entry in active]
     else:
         jobs = due_destinations(now, token)
         selected_map: dict[str, tuple[dict[str, Any], int]] = {}
@@ -142,7 +142,14 @@ def publish_due(token: str, force: bool = False) -> dict[str, Any]:
         try:
             result = TelegramPublisher(token=token, chat_id=str(entry["chat_id"])).send_text(draft["body"])
             message_id = int(result.get("result", {}).get("message_id"))
-            mark_delivered(date, slot, entry["chat_id"], message_id)
+            if not force:
+                mark_delivered(date, slot, entry["chat_id"], message_id)
+            else:
+                private = load_private()
+                manual_log = private.setdefault("manual_deliveries", [])
+                manual_log.append({"at": now.isoformat(), "chat_id": int(entry["chat_id"]), "title": entry.get("title"), "message_id": message_id, "item_id": draft.get("item_id")})
+                private["manual_deliveries"] = manual_log[-200:]
+                save_private(private)
             JsonState().mark_published(draft["item_id"], message_id)
             sent += 1
         except Exception as exc:
