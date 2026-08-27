@@ -1,7 +1,7 @@
 [project]
-name = "climavids-content-engine"
-version = "0.3.0"
-description = "Resilient Persian autonomous content engine for ClimaVids"
+name = "climavids-telegram-content-engine"
+version = "0.4.0"
+description = "Automated Persian content engine for the ClimaVids Telegram channel"
 requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4==4.13.4",
