@@ -22,12 +22,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN is missing"; exit 1; }
-          URL="${WORKER_URL%/}/telegram/webhook"
-          SECRET="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | sha256sum | awk '{print $1}')"
-          curl --fail --silent --show-error \
-            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-            -H 'Content-Type: application/json' \
-            --data "$(python - <<'PY'
+          export URL="${WORKER_URL%/}/telegram/webhook"
+          export SECRET="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | sha256sum | awk '{print $1}')"
+          BODY="$(python - <<'PY'
 import json, os
 print(json.dumps({
     "url": os.environ["URL"],
@@ -37,3 +34,8 @@ print(json.dumps({
 }))
 PY
 )"
+          curl --fail --silent --show-error \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            -H 'Content-Type: application/json' \
+            --data "$BODY"
+          echo
