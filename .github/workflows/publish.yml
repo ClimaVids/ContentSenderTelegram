@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: climavids-network-publisher
+  group: climavids-telegram-state
   cancel-in-progress: false
 
 permissions:
@@ -49,7 +49,7 @@ jobs:
           set -euo pipefail
           python -m climavids.cli publish-network
 
-      - name: Persist public runtime state
+      - name: Persist public and encrypted private state
         if: always()
         run: |
           set -euo pipefail
