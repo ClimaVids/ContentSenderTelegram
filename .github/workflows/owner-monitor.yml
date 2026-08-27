@@ -1,12 +1,12 @@
-name: ClimaVids Owner Monitor
+name: ClimaVids Network Monitor
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
-  group: climavids-owner-monitor
+  group: climavids-network-monitor
   cancel-in-progress: false
 
 permissions:
@@ -16,13 +16,12 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: true
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -35,22 +34,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Validate Telegram bot token
+      - name: Validate bot token
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           set -euo pipefail
           test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN is missing"; exit 1; }
 
-      - name: Process private owner commands
+      - name: Poll Telegram updates and process commands
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           set -euo pipefail
           python - <<'PY'
-          from climavids.owner import poll_owner_commands
-          changed = poll_owner_commands()
-          print(f"owner_commands_processed state_changed={changed}")
+          from climavids.owner import poll_updates
+          changed = poll_updates()
+          print(f"telegram_updates_processed state_changed={changed}")
           PY
 
       - name: Scheduled owner report
@@ -64,33 +63,34 @@ jobs:
           from climavids.owner import send_scheduled_report
 
           now = datetime.now(ZoneInfo("Asia/Tehran"))
-          if now.hour == 9 and now.minute < 15:
+          if now.hour == 9 and now.minute < 5:
               send_scheduled_report("morning")
               print("scheduled_report=morning")
-          elif now.hour == 21 and now.minute < 15:
+          elif now.hour == 21 and now.minute < 5:
               send_scheduled_report("night")
               print("scheduled_report=night")
           else:
               print("scheduled_report=none")
           PY
 
-      - name: Persist owner state
+      - name: Persist encrypted private state
         run: |
           set -euo pipefail
-          if [ ! -f data/owner_state.json ]; then
+          if [ ! -f data/private_state.enc ]; then
+            echo "No private state yet."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f data/owner_state.json
+          git add -f data/private_state.enc
           if git diff --cached --quiet; then
-            echo "No owner state changes."
+            echo "No private state changes."
             exit 0
           fi
-          git commit -m "chore: persist owner monitor state"
+          git commit -m "chore: persist encrypted Telegram network state"
           for attempt in 1 2 3; do
             if git push origin HEAD:main; then
-              echo "Owner state persisted."
+              echo "Encrypted private state persisted."
               exit 0
             fi
             git fetch origin main
@@ -99,39 +99,17 @@ jobs:
           done
           exit 1
 
-      - name: Report monitor failure
+      - name: Report monitor failure to owner
         if: failure()
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           python - <<'PY'
-          import json
           import os
-          from pathlib import Path
-          import requests
-
-          token = os.environ.get("TELEGRAM_BOT_TOKEN")
-          if not token:
-              raise SystemExit(0)
-          path = Path("data/owner_state.json")
-          if not path.exists():
-              raise SystemExit(0)
-          state = json.loads(path.read_text(encoding="utf-8"))
-          owner = state.get("owner_chat_id")
-          if not owner:
-              raise SystemExit(0)
-          requests.post(
-              f"https://api.telegram.org/bot{token}/sendMessage",
-              json={
-                  "chat_id": int(owner),
-                  "text": (
-                      "🚨 ContentSenderTelegram\n\n"
-                      "سیستم مانیتورینگ مالک با خطا مواجه شد.\n"
-                      f"Workflow: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  ),
-                  "disable_web_page_preview": True,
-              },
-              timeout=20,
-          ).raise_for_status()
+          from climavids.owner import send_failure_alert
+          send_failure_alert(
+              f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              "ClimaVids Network Monitor",
+          )
           PY
