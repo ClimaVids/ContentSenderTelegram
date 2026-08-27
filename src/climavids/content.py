@@ -154,7 +154,8 @@ def _fit_body(core: list[str], footer: str, limit: int = 3900) -> str:
         first = _complete_sentence(core[0], available)
         if first:
             selected = [first]
-    return f"{'\\n\\n'.join(selected).strip()}\n\n{fixed_footer}".strip()
+    body_core = "\n\n".join(selected).strip()
+    return f"{body_core}\n\n{fixed_footer}".strip()
 
 
 def render(item: NewsItem, style: str = "news") -> ContentDraft:
@@ -169,7 +170,8 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
     footer = _footer(style)
     body = _fit_body(body_parts, footer, limit=3900)
 
-    # Final public-output sanitization. Only the fixed ClimaVids footer may contain our handles.
+    # Final public-output sanitization: external URLs, handles and source hashtags
+    # are never allowed in the public core. Only the fixed ClimaVids footer may keep handles.
     core, _, fixed = body.rpartition("\n\n")
     core = _strip_source_artifacts(core)
     body = f"{core}\n\n{fixed}".strip()
