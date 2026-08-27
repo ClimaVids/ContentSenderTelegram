@@ -41,7 +41,7 @@ def test_render_keeps_paragraphs_sentence_complete() -> None:
     assert not draft.body.endswith(("،", ",", ":", "؛", "-", "…"))
 
 
-def test_telegram_publisher_defaults_to_climavids(monkeypatch):
+def test_telegram_publisher_defaults_to_climavids(monkeypatch) -> None:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "dummy")
     publisher = TelegramPublisher()
     assert publisher.chat_id == "@climavids"
