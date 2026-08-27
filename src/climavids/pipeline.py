@@ -20,6 +20,7 @@ def load_sources(path: str = "data/sources.json") -> list[Source]:
 
 
 def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
+    """Collect broadly, filter duplicates conservatively, and always keep a publishable fallback."""
     state = JsonState()
     raw = []
     source_counts: dict[str, int] = {}
@@ -49,17 +50,23 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
     for item in raw:
         if state.published(item.id):
             continue
-        if any(similarity(item.title, old.title) >= 0.72 for old in unique):
+        # Conservative title deduplication: only suppress near-identical titles.
+        if any(similarity(item.title, old.title) >= 0.82 for old in unique):
             continue
         unique.append(item)
 
     ranked = sorted((score(x) for x in unique), key=lambda x: x.total, reverse=True)
-    selected = [x for x in ranked if x.total >= 62][:limit]
+
+    # Do not let a hard quality threshold block publication completely.
+    # Prefer strong candidates, but if none reaches the preference floor,
+    # publish the best available non-duplicate item instead of producing nothing.
+    preferred = [x for x in ranked if x.total >= 50]
+    selected = (preferred or ranked)[:limit]
 
     print(
         "PIPELINE_SUMMARY "
         f"raw={len(raw)} unique={len(unique)} ranked={len(ranked)} "
-        f"selected={len(selected)} source_errors={len(source_errors)}"
+        f"preferred={len(preferred)} selected={len(selected)} source_errors={len(source_errors)}"
     )
     if ranked:
         print(
@@ -86,6 +93,7 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
             "last_raw_items": len(raw),
             "last_unique_items": len(unique),
             "last_candidates": len(ranked),
+            "last_preferred": len(preferred),
             "last_selected": len(output),
             "errors": (metrics.get("errors", []) + source_errors)[-20:],
         }
