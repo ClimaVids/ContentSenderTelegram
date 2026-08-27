@@ -252,6 +252,12 @@ def _handle_destination_command(update: dict[str, Any], chat: dict[str, Any], co
 
 
 def poll_updates() -> bool:
+    # This bot uses long-polling via GitHub Actions; remove any stale webhook first.
+    try:
+        telegram_call("deleteWebhook", {"drop_pending_updates": False})
+    except Exception:
+        pass
+
     private = load_private()
     offset = int(private.get("update_offset", 0) or 0)
     updates = telegram_call("getUpdates", {"offset": offset, "timeout": 0, "allowed_updates": ["message", "my_chat_member", "channel_post"]}).get("result", [])
@@ -303,6 +309,7 @@ def poll_updates() -> bool:
             continue
         chat_type = chat.get("type")
         chat_id = int(chat["id"])
+
         if chat_type == "private":
             owner_id = str(private.get("owner_chat_id") or "")
             if command == "/start":
@@ -332,12 +339,16 @@ def poll_updates() -> bool:
             elif command == "/help":
                 send_message(chat_id, PUBLIC_HELP)
             continue
+
         if chat_type in {"group", "supergroup"}:
             try:
                 _handle_destination_command(update, chat, command, args)
                 private = load_private()
             except Exception as exc:
-                send_message(chat_id, f"❌ خطا: {type(exc).__name__}: {exc}")
+                try:
+                    send_message(chat_id, f"❌ خطا: {type(exc).__name__}: {exc}")
+                except Exception:
+                    pass
         elif chat_type == "channel":
             try:
                 _handle_destination_command(update, chat, command, args, channel_post=True)
