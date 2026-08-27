@@ -4,7 +4,7 @@ import argparse
 import json
 from datetime import datetime, timezone
 
-from climavids.owner import build_logs_summary, build_report, build_test_report, send_owner
+from climavids.owner import OWNER_HELP, build_report, send_owner
 from climavids.pipeline import run
 from climavids.publishers.telegram import TelegramPublisher
 from climavids.state import JsonState
@@ -21,25 +21,28 @@ def _record_metrics(**values: object) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["dry-run", "publish", "health", "owner-report", "owner-help"])
+    parser.add_argument(
+        "command",
+        choices=["dry-run", "publish", "health", "owner-report", "owner-help"],
+    )
     parser.add_argument("--limit", type=int, default=8)
     args = parser.parse_args()
 
     if args.command in {"owner-report", "owner-help"}:
-        if args.command == "owner-help":
-            from climavids.owner import OWNER_HELP
-            send_owner(OWNER_HELP)
-        else:
-            send_owner(build_report())
+        send_owner(OWNER_HELP if args.command == "owner-help" else build_report())
         return
 
     if args.command == "health":
         state = JsonState()
-        report = {
-            "ok": True,
-            "published_count": len(state.load().get("published", [])),
-        }
-        print(json.dumps(report, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "published_count": len(state.load().get("published", [])),
+                },
+                ensure_ascii=False,
+            )
+        )
         return
 
     if args.command == "dry-run":
@@ -48,7 +51,6 @@ def main() -> None:
             last_result="dry-run",
             last_candidates=len(items),
             last_selected=len(items),
-            last_source_errors=0,
         )
         print(json.dumps({"generated": len(items)}, ensure_ascii=False))
         return
@@ -58,7 +60,12 @@ def main() -> None:
             items = run(dry_run=False, limit=1)
             if not items:
                 _record_metrics(last_result="no_candidate", last_candidates=0, last_selected=0)
-                print(json.dumps({"published": False, "reason": "no_candidate"}, ensure_ascii=False))
+                print(
+                    json.dumps(
+                        {"published": False, "reason": "no_candidate"},
+                        ensure_ascii=False,
+                    )
+                )
                 return
 
             draft = items[0]["draft"]
@@ -75,8 +82,16 @@ def main() -> None:
             state.mark_published(draft["item_id"], message_id)
             state.mark_seen(draft["item_id"])
             _record_metrics(last_result="published", last_message_id=message_id)
-            print(json.dumps({"published": True, "item_id": draft["item_id"], "message_id": message_id}, ensure_ascii=False))
-            return
+            print(
+                json.dumps(
+                    {
+                        "published": True,
+                        "item_id": draft["item_id"],
+                        "message_id": message_id,
+                    },
+                    ensure_ascii=False,
+                )
+            )
         except Exception as exc:
             _record_metrics(last_result="error", last_error=f"{type(exc).__name__}: {exc}")
             raise
