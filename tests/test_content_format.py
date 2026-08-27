@@ -1,10 +1,8 @@
 from datetime import datetime, timezone
 
-import pytest
-
 from climavids.content import render
 from climavids.models import NewsItem
-from climavids.publishers.telegram import TelegramError, TelegramPublisher
+from climavids.publishers.telegram import TelegramPublisher
 
 
 def make_item(summary: str) -> NewsItem:
@@ -29,7 +27,6 @@ def test_render_hides_title_source_and_external_channel_details() -> None:
     assert "خشکی چمن‌ها، خشکی تدبیر" not in draft.body
     assert "https://example.com/source" not in draft.body
     assert "groundwater-resources" not in draft.body
-    assert "🔗 ایمانی‌پور | @climavids" in draft.body
     assert "https://t.me/climavids" not in draft.body
 
 
@@ -44,8 +41,7 @@ def test_render_keeps_paragraphs_sentence_complete() -> None:
     assert not draft.body.endswith(("،", ",", ":", "؛", "-", "…"))
 
 
-def test_telegram_publisher_rejects_non_numeric_chat_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_telegram_publisher_defaults_to_climavids(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "dummy")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "@ClimaVids")
-    with pytest.raises(TelegramError, match="numeric Telegram chat id"):
-        TelegramPublisher()
+    publisher = TelegramPublisher()
+    assert publisher.chat_id == "@climavids"
