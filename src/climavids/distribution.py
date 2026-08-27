@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from climavids.config import DESTINATION
 from climavids.destinations import active_destinations, delivered, due_destinations, mark_delivered
 from climavids.pipeline import run
 from climavids.private_state import load as load_private, save as save_private
@@ -23,7 +23,7 @@ def _get_or_create_draft(date: str, slot: int) -> dict[str, Any] | None:
     cache = private.setdefault("slot_content", {})
     key = _slot_key(date, slot)
     cached = cache.get(key)
-    if isinstance(cached, dict) and cached.get("body"):
+    if isinstance(cached, dict) and isinstance(cached.get("draft"), dict) and cached["draft"].get("body"):
         return cached
 
     items = run(dry_run=False, limit=1)
@@ -31,7 +31,6 @@ def _get_or_create_draft(date: str, slot: int) -> dict[str, Any] | None:
         return None
     draft = items[0]["draft"]
     cache[key] = {"draft": draft, "created_at": datetime.now(TZ).isoformat()}
-    # Keep a compact rolling cache.
     cutoff = datetime.now(TZ) - timedelta(days=14)
     kept: dict[str, Any] = {}
     for k, value in cache.items():
@@ -43,11 +42,11 @@ def _get_or_create_draft(date: str, slot: int) -> dict[str, Any] | None:
             kept[k] = value
     private["slot_content"] = kept
     save_private(private)
-    return cache[key]
+    return kept[key]
 
 
 def ensure_primary_destination(token: str) -> dict[str, Any]:
-    publisher = TelegramPublisher(token=token)
+    publisher = TelegramPublisher(token=token, chat_id=DESTINATION)
     chat = publisher.destination_check().get("result", {})
     membership = publisher.bot_membership().get("result", {})
     status = membership.get("status", "unknown")
@@ -56,11 +55,12 @@ def ensure_primary_destination(token: str) -> dict[str, Any]:
 
     private = load_private()
     destinations = private.setdefault("destinations", {})
-    entry = destinations.get(str(chat.get("id")), {})
+    chat_id = str(chat["id"])
+    entry = destinations.get(chat_id, {})
     entry.update(
         {
             "chat_id": int(chat["id"]),
-            "title": chat.get("title") or DESTINATION_FALLBACK,
+            "title": chat.get("title") or "ClimaVids",
             "username": chat.get("username") or "climavids",
             "type": chat.get("type", "channel"),
             "status": status,
@@ -72,20 +72,17 @@ def ensure_primary_destination(token: str) -> dict[str, Any]:
             "updated_at": datetime.now(TZ).isoformat(),
         }
     )
-    destinations[str(chat["id"])] = entry
+    destinations[chat_id] = entry
     private["destinations"] = destinations
     save_private(private)
     return entry
 
 
-DESTINATION_FALLBACK = "ClimaVids"
-
-
 def publish_due(token: str) -> dict[str, Any]:
+    ensure_primary_destination(token)
     now = datetime.now(TZ)
     jobs = due_destinations(now)
-    # One catch-up publication per destination per workflow run prevents a newly
-    # added destination from receiving several old posts at once.
+
     selected: dict[str, tuple[dict[str, Any], int]] = {}
     for entry, slot in jobs:
         chat_id = str(entry["chat_id"])
@@ -103,7 +100,7 @@ def publish_due(token: str) -> dict[str, Any]:
         payload = _get_or_create_draft(date, slot)
         if not payload:
             failed += 1
-            errors.append(f"{entry.get('title')}: no_candidate")
+            errors.append(f"{entry.get('title')}: کاندید مناسب پیدا نشد")
             continue
         draft = payload["draft"]
         try:
