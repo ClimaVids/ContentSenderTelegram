@@ -45,7 +45,7 @@ jobs:
       - name: Publish due content to the ClimaVids network
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CLIMAVIDS_BOT_API_URL: ${{ secrets.CLIMAVIDS_BOT_API_URL }}
+          CLIMAVIDS_BOT_API_URL: ${{ vars.CLIMAVIDS_BOT_API_URL }}
         run: |
           set -euo pipefail
           python -m climavids.cli publish-network
