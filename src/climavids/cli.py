@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 
 from climavids.distribution import publish_due
 from climavids.owner import OWNER_HELP, build_report, send_message
 from climavids.pipeline import run
+from climavids.remote_network import fetch_force_run
 from climavids.state import JsonState
 
 
@@ -26,6 +28,7 @@ def main() -> None:
         choices=["dry-run", "publish", "publish-network", "health", "owner-report", "owner-help"],
     )
     parser.add_argument("--limit", type=int, default=8)
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
     if args.command in {"owner-report", "owner-help"}:
@@ -48,10 +51,12 @@ def main() -> None:
         return
 
     if args.command == "publish-network":
-        token = __import__("os").environ.get("TELEGRAM_BOT_TOKEN", "")
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
         if not token:
             raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
-        result = publish_due(token)
+        remote_force = fetch_force_run(token)
+        force = bool(args.force or (remote_force or {}).get("pending"))
+        result = publish_due(token, force=force)
         _record_metrics(
             last_result="network-publish",
             last_due_destinations=result["destinations_due"],
@@ -66,7 +71,6 @@ def main() -> None:
         return
 
     if args.command == "publish":
-        from climavids.distribution import publish_due
-        token = __import__("os").environ.get("TELEGRAM_BOT_TOKEN", "")
-        result = publish_due(token)
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        result = publish_due(token, force=args.force)
         print(json.dumps(result, ensure_ascii=False))
