@@ -25,7 +25,6 @@ def _get_or_create_draft(date: str, slot: int) -> dict[str, Any] | None:
     cached = cache.get(key)
     if isinstance(cached, dict) and isinstance(cached.get("draft"), dict) and cached["draft"].get("body"):
         return cached
-
     items = run(dry_run=False, limit=1)
     if not items:
         return None
@@ -51,26 +50,23 @@ def ensure_primary_destination(token: str) -> dict[str, Any]:
     membership = publisher.bot_membership().get("result", {}).get("status", "unknown")
     if membership not in {"administrator", "creator"}:
         raise RuntimeError("ربات باید در کانال @climavids Administrator باشد.")
-
     private = load_private()
     destinations = private.setdefault("destinations", {})
     chat_id = str(chat["id"])
     old = destinations.get(chat_id, {})
     entry = dict(old)
-    entry.update(
-        {
-            "chat_id": int(chat["id"]),
-            "title": chat.get("title") or "ClimaVids",
-            "username": chat.get("username") or "climavids",
-            "type": chat.get("type", "channel"),
-            "status": membership,
-            "active": True,
-            "posts_per_day": int(old.get("posts_per_day", 1)),
-            "times": old.get("times", ["20:00"]),
-            "is_primary": True,
-            "added_at": old.get("added_at") or datetime.now(TZ).isoformat(),
-        }
-    )
+    entry.update({
+        "chat_id": int(chat["id"]),
+        "title": chat.get("title") or "ClimaVids",
+        "username": chat.get("username") or "climavids",
+        "type": chat.get("type", "channel"),
+        "status": membership,
+        "active": True,
+        "posts_per_day": int(old.get("posts_per_day", 1)),
+        "times": old.get("times", ["20:00"]),
+        "is_primary": True,
+        "added_at": old.get("added_at") or datetime.now(TZ).isoformat(),
+    })
     if entry != old:
         entry["updated_at"] = datetime.now(TZ).isoformat()
         destinations[chat_id] = entry
@@ -83,7 +79,6 @@ def _publish_to_entries(token: str, entries: list[dict[str, Any]], draft: dict[s
     attempted = sent = failed = 0
     errors: list[str] = []
     now = datetime.now(TZ)
-    date = now.strftime("%Y-%m-%d")
     for entry in entries:
         attempted += 1
         try:
@@ -92,17 +87,13 @@ def _publish_to_entries(token: str, entries: list[dict[str, Any]], draft: dict[s
             if manual:
                 private = load_private()
                 manual_log = private.setdefault("manual_deliveries", [])
-                manual_log.append({
-                    "at": now.isoformat(),
-                    "chat_id": int(entry["chat_id"]),
-                    "title": entry.get("title"),
-                    "message_id": message_id,
-                    "item_id": draft.get("item_id"),
-                })
+                manual_log.append({"at": now.isoformat(), "chat_id": int(entry["chat_id"]), "title": entry.get("title"), "message_id": message_id, "item_id": draft.get("item_id")})
                 private["manual_deliveries"] = manual_log[-200:]
                 save_private(private)
-            sent += 1
+            else:
+                mark_delivered(now.strftime("%Y-%m-%d"), 1, entry["chat_id"], message_id)
             JsonState().mark_published(draft["item_id"], message_id)
+            sent += 1
         except Exception as exc:
             failed += 1
             errors.append(f"{entry.get('title', entry.get('chat_id'))}: {type(exc).__name__}: {exc}")
@@ -111,7 +102,7 @@ def _publish_to_entries(token: str, entries: list[dict[str, Any]], draft: dict[s
 
 def publish_now(token: str) -> dict[str, Any]:
     ensure_primary_destination(token)
-    entries = [x for x in active_destinations() if x.get("active")]
+    entries = [x for x in active_destinations(token) if x.get("active")]
     if not entries:
         return {"now": datetime.now(TZ).isoformat(), "active_destinations": 0, "attempted": 0, "sent": 0, "failed": 0, "errors": ["هیچ مقصد فعالی ثبت نشده است."]}
     items = run(dry_run=False, limit=1)
@@ -120,22 +111,26 @@ def publish_now(token: str) -> dict[str, Any]:
     return _publish_to_entries(token, entries, items[0]["draft"], manual=True)
 
 
-def publish_due(token: str) -> dict[str, Any]:
+def publish_due(token: str, force: bool = False) -> dict[str, Any]:
     ensure_primary_destination(token)
     now = datetime.now(TZ)
-    jobs = due_destinations(now)
-
-    selected: dict[str, tuple[dict[str, Any], int]] = {}
-    for entry, slot in jobs:
-        chat_id = str(entry["chat_id"])
-        if delivered(now.strftime("%Y-%m-%d"), slot, chat_id):
-            continue
-        if chat_id not in selected or slot < selected[chat_id][1]:
-            selected[chat_id] = (entry, slot)
+    if force:
+        active = [x for x in active_destinations(token) if x.get("active")]
+        selected = [(entry, 1) for entry in active if not delivered(now.strftime("%Y-%m-%d"), 1, entry["chat_id"])]
+    else:
+        jobs = due_destinations(now, token)
+        selected_map: dict[str, tuple[dict[str, Any], int]] = {}
+        for entry, slot in jobs:
+            chat_id = str(entry["chat_id"])
+            if delivered(now.strftime("%Y-%m-%d"), slot, chat_id):
+                continue
+            if chat_id not in selected_map or slot < selected_map[chat_id][1]:
+                selected_map[chat_id] = (entry, slot)
+        selected = list(selected_map.values())
 
     attempted = sent = failed = 0
     errors: list[str] = []
-    for entry, slot in selected.values():
+    for entry, slot in selected:
         attempted += 1
         date = now.strftime("%Y-%m-%d")
         payload = _get_or_create_draft(date, slot)
@@ -156,10 +151,11 @@ def publish_due(token: str) -> dict[str, Any]:
 
     return {
         "now": now.isoformat(),
+        "force": force,
         "destinations_due": len(selected),
         "attempted": attempted,
         "sent": sent,
         "failed": failed,
         "errors": errors,
-        "active_destinations": len(active_destinations()),
+        "active_destinations": len(active_destinations(token)),
     }
