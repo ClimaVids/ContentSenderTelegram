@@ -20,26 +20,25 @@ PUBLIC_HELP = """🤖 ContentSenderTelegram | دستیار انتشار محتو
 
 ✅ شروع سریع برای مدیران:
 • ربات را به گروه اضافه و Administrator کنید.
-• برای گروه، دسترسی ارسال پیام را فعال بگذارید.
+• ربات را Administrator کنید و اجازه ارسال پیام بدهید.
 • ربات به‌صورت پیش‌فرض روزانه ۱ پست می‌فرستد.
-• با فرمان‌های زیر می‌توانید تنظیمات همین مقصد را تغییر دهید.
+• مدیر هر مقصد می‌تواند تعداد و زمان ارسال را تغییر دهد.
 
 ⚙️ تنظیمات مدیر:
 /setup — مشاهده تنظیمات فعلی
 /posts 1 — روزانه ۱ پست
 /posts 2 — روزانه ۲ پست
 /posts 3 — روزانه ۳ پست
-/times 10:00 20:00 — تعیین ساعت ارسال
+/times 10:00 20:00 — تعیین ساعت‌های ارسال
 /on — فعال‌سازی ارسال
 /off — توقف موقت ارسال
 
 📌 نکات:
-• محتوای یکسان ClimaVids برای مقصدهای فعال توزیع می‌شود.
-• زمان‌بندی هر مقصد مستقل است.
+• محتوای منتشرشده در مقصدهای فعال یکسان است؛ زمان‌بندی هر مقصد مستقل است.
 • ربات در پیام‌های عادی کاربران دخالت نمی‌کند.
-• اطلاعات شبکه مقصدها و گزارش‌های فنی برای کاربران عادی نمایش داده نمی‌شود.
+• گزارش شبکه، نام مقصدهای دیگر، آمار کل و خطاهای فنی فقط برای مالک ربات محفوظ است.
 
-برای شروع فقط /setup را بزنید."""
+برای مشاهده تنظیمات همین مقصد /setup را بزنید."""
 
 OWNER_HELP = """🔐 پنل خصوصی مالک ContentSenderTelegram
 
@@ -49,10 +48,10 @@ OWNER_HELP = """🔐 پنل خصوصی مالک ContentSenderTelegram
 /report — گزارش کامل عملکرد و آمار
 /network — تعداد و نام گروه‌ها و کانال‌های فعال
 /logs — جزئیات فنی، منابع و خطاهای اخیر
-/health — بررسی کلی سلامت ربات و شبکه
-/help — همین راهنمای مالک
+/health — بررسی سلامت ربات و همه مقصدها
+/help — راهنمای مالک
 
-مدیران مقصدها از داخل گروه/کانال فقط تنظیمات همان مقصد را می‌بینند."""
+مدیران مقصدها فقط تنظیمات همان مقصد را می‌بینند."""
 
 
 def _token() -> str:
@@ -106,15 +105,14 @@ def build_report() -> str:
         f"✅ انتشارهای ثبت‌شده: {len(published)}\n"
         f"📥 آیتم خام آخرین اجرا: {metrics.get('last_raw_items', 'نامشخص')}\n"
         f"🎯 کاندیدهای آخرین اجرا: {metrics.get('last_candidates', 'نامشخص')}\n"
-        f"⚠️ خطای منابع آخرین اجرا: {metrics.get('last_source_errors', 'نامشخص')}\n"
+        f"⚠️ خطای منابع: {metrics.get('last_source_errors', 'نامشخص')}\n"
         f"📤 آخرین انتشار: {last_pub}"
     )
 
 
 def build_network_report() -> str:
     private = load_private()
-    all_dest = list(private.get("destinations", {}).values())
-    active = [x for x in all_dest if x.get("active")]
+    active = [x for x in private.get("destinations", {}).values() if x.get("active")]
     lines = [
         "🌐 گزارش شبکه ContentSenderTelegram",
         "",
@@ -159,26 +157,24 @@ def build_logs() -> str:
 
 def build_health() -> str:
     private = load_private()
-    lines = ["🩺 سلامت ContentSenderTelegram", "", f"🤖 ربات: {private.get('bot_username', 'نامشخص')}"]
+    lines = ["🩺 سلامت ContentSenderTelegram", ""]
     try:
         me = telegram_call("getMe").get("result", {})
         lines.append(f"✅ Bot API: سالم | @{me.get('username', 'unknown')} | ID {me.get('id', 'unknown')}")
     except Exception as exc:
-        lines.append(f"❌ Bot API: {type(exc).__name__}: {exc}")
-        return "\n".join(lines)
-
+        return "\n".join(lines + [f"❌ Bot API: {type(exc).__name__}: {exc}"])
     active = [x for x in private.get("destinations", {}).values() if x.get("active")]
     ok = fail = 0
     for entry in active:
         try:
-            chat = telegram_call("getChat", {"chat_id": int(entry["chat_id"]) }).get("result", {})
+            target = telegram_call("getChat", {"chat_id": int(entry["chat_id"]) }).get("result", {})
             member = telegram_call("getChatMember", {"chat_id": int(entry["chat_id"]), "user_id": me["id"]}).get("result", {})
             status = member.get("status", "unknown")
             if status in {"administrator", "creator"}:
                 ok += 1
             else:
                 fail += 1
-                lines.append(f"⚠️ {chat.get('title') or entry.get('title')}: وضعیت Bot = {status}")
+                lines.append(f"⚠️ {target.get('title') or entry.get('title')}: Bot = {status}")
         except Exception as exc:
             fail += 1
             lines.append(f"❌ {entry.get('title')}: {type(exc).__name__}: {exc}")
@@ -204,26 +200,22 @@ def _handle_destination_command(update: dict[str, Any], chat: dict[str, Any], co
     if command == "/help":
         send_message(chat_id, PUBLIC_HELP)
         return
-
-    message = update.get("channel_post") if channel_post else update.get("message")
-    sender = (message or {}).get("from") or {}
     if channel_post:
-        is_admin = True  # A channel post is made by an authorized channel poster.
+        is_admin = True
     else:
-        user_id = int(sender.get("id", 0))
-        is_admin = _admin_for_group(chat_id, user_id)
+        sender = (update.get("message") or {}).get("from") or {}
+        is_admin = _admin_for_group(chat_id, int(sender.get("id", 0)))
     if not is_admin:
         send_message(chat_id, "ℹ️ این دستور فقط برای مدیران قابل استفاده است.")
         return
-
     if command == "/setup":
         entry = get_destination(chat_id)
         if not entry:
             register_destination(chat, "administrator")
             entry = get_destination(chat_id)
-        send_message(chat_id, f"⚙️ تنظیمات این مقصد\n\n📌 وضعیت: {'فعال' if entry.get('active') else 'متوقف'}\n📝 تعداد پست: {entry.get('posts_per_day', 1)} در روز\n🕒 ساعت‌ها: {', '.join(entry.get('times', []))}\n\nبرای تغییر: /posts 2 یا /times 10:00 20:00")
+        if entry:
+            send_message(chat_id, f"⚙️ تنظیمات این مقصد\n\n📌 وضعیت: {'فعال' if entry.get('active') else 'متوقف'}\n📝 تعداد پست: {entry.get('posts_per_day', 1)} در روز\n🕒 ساعت‌ها: {', '.join(entry.get('times', []))}\n\nبرای تغییر: /posts 2 یا /times 20:00")
         return
-
     if command == "/posts":
         if len(args) != 1 or not args[0].isdigit():
             send_message(chat_id, f"❌ شکل صحیح: /posts 2\nتعداد مجاز: 1 تا {MAX_POSTS}")
@@ -234,7 +226,6 @@ def _handle_destination_command(update: dict[str, Any], chat: dict[str, Any], co
         except Exception as exc:
             send_message(chat_id, f"❌ {exc}")
         return
-
     if command == "/times":
         entry = get_destination(chat_id)
         count = int(entry.get("posts_per_day", 1)) if entry else 1
@@ -248,18 +239,16 @@ def _handle_destination_command(update: dict[str, Any], chat: dict[str, Any], co
         except Exception as exc:
             send_message(chat_id, f"❌ {exc}")
         return
-
     if command in {"/on", "/off"}:
         data = load_private()
         entry = data.setdefault("destinations", {}).get(str(chat_id))
         if not entry:
-            send_message(chat_id, "⚠️ این مقصد هنوز ثبت نشده است. ابتدا ربات را Administrator کنید.")
+            send_message(chat_id, "⚠️ این مقصد هنوز ثبت نشده است؛ ربات را Administrator کنید.")
             return
         entry["active"] = command == "/on"
         entry["updated_at"] = datetime.now(TZ).isoformat()
         save_private(data)
         send_message(chat_id, "✅ ارسال محتوا فعال شد." if command == "/on" else "⏸ ارسال محتوا در این مقصد متوقف شد.")
-        return
 
 
 def poll_updates() -> bool:
@@ -267,7 +256,6 @@ def poll_updates() -> bool:
     offset = int(private.get("update_offset", 0) or 0)
     updates = telegram_call("getUpdates", {"offset": offset, "timeout": 0, "allowed_updates": ["message", "my_chat_member", "channel_post"]}).get("result", [])
     changed = False
-
     me = telegram_call("getMe").get("result", {})
     private["bot_id"] = me.get("id")
     private["bot_username"] = f"@{me.get('username', 'unknown')}"
@@ -284,7 +272,6 @@ def poll_updates() -> bool:
             if chat.get("type") in {"group", "supergroup", "channel"}:
                 if status in {"administrator", "creator"}:
                     entry = register_destination(chat, status, me.get("id"))
-                    # Welcome once per destination status lifecycle.
                     data = load_private()
                     item = data.setdefault("destinations", {}).setdefault(str(chat["id"]), entry)
                     if not item.get("welcome_sent"):
@@ -303,7 +290,7 @@ def poll_updates() -> bool:
                         item["active"] = False
                         item["updated_at"] = datetime.now(TZ).isoformat()
                         save_private(data)
-                        private = data
+                    private = data
             continue
 
         message = update.get("message") or update.get("channel_post") or {}
@@ -314,17 +301,12 @@ def poll_updates() -> bool:
         command, args = _parse_command(text)
         if not command:
             continue
-
         chat_type = chat.get("type")
-        chat_id = int(chat.get("id"))
-        owner_id = str(private.get("owner_chat_id") or "")
-
+        chat_id = int(chat["id"])
         if chat_type == "private":
+            owner_id = str(private.get("owner_chat_id") or "")
             if command == "/start":
-                if owner_id and str(chat_id) == owner_id:
-                    send_message(chat_id, OWNER_HELP)
-                else:
-                    send_message(chat_id, PUBLIC_HELP)
+                send_message(chat_id, OWNER_HELP if owner_id and str(chat_id) == owner_id else PUBLIC_HELP)
                 continue
             if command == "/claim":
                 if owner_id and owner_id != str(chat_id):
@@ -333,7 +315,7 @@ def poll_updates() -> bool:
                     private["owner_chat_id"] = chat_id
                     private["owner_username"] = (message.get("from") or {}).get("username")
                     private["claimed_at"] = datetime.now(TZ).isoformat()
-                    send_message(chat_id, "✅ پنل مالک با موفقیت فعال شد.\n\n" + OWNER_HELP)
+                    send_message(chat_id, "✅ پنل مالک فعال شد.\n\n" + OWNER_HELP)
                 else:
                     send_message(chat_id, "✅ این گفت‌وگو پنل مالک است.\n\n" + OWNER_HELP)
                 continue
@@ -350,15 +332,16 @@ def poll_updates() -> bool:
             elif command == "/help":
                 send_message(chat_id, PUBLIC_HELP)
             continue
-
         if chat_type in {"group", "supergroup"}:
             try:
-                _handle_destination_command(update, chat, command, args, channel_post=False)
+                _handle_destination_command(update, chat, command, args)
+                private = load_private()
             except Exception as exc:
                 send_message(chat_id, f"❌ خطا: {type(exc).__name__}: {exc}")
         elif chat_type == "channel":
             try:
                 _handle_destination_command(update, chat, command, args, channel_post=True)
+                private = load_private()
             except Exception:
                 pass
 
