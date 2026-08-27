@@ -20,14 +20,34 @@ def make_item(summary: str) -> NewsItem:
 
 def test_render_hides_title_source_and_external_channel_details() -> None:
     draft = render(
-        make_item("خشکی چمن‌ها، خشکی تدبیر؛ در لندن محدودیت مصرف آب اعمال شده است."),
+        make_item(
+            "خشکی چمن‌ها، خشکی تدبیر؛ در لندن محدودیت مصرف آب اعمال شده است. "
+            "[مشروح خبر](https://news.example/test) @niroonline"
+        ),
         style="news",
     )
     assert draft.title == ""
     assert "خشکی چمن‌ها، خشکی تدبیر" not in draft.body
     assert "https://example.com/source" not in draft.body
     assert "groundwater-resources" not in draft.body
-    assert "https://t.me/climavids" not in draft.body
+    assert "news.example" not in draft.body
+    assert "@niroonline" not in draft.body
+    assert "@Clima_Vids" in draft.body
+    assert "@climavids" in draft.body
+
+
+def test_render_repairs_known_feed_fragment_and_preserves_complete_sentences() -> None:
+    draft = render(
+        make_item(
+            "ار گلستان، نمایندگان گرگان و آق‌قلا در مجلس شورای اسلامی و جمعی از مدیران محلی "
+            "در شهرستان آق‌قلا به بهره‌برداری رسید."
+        ),
+        style="news",
+    )
+    assert draft.body.startswith("در گلستان،")
+    assert not draft.body.endswith(("،", ",", ":", "؛", "-", "…"))
+    assert "@Clima_Vids" in draft.body
+    assert "🔗 ایمانی‌پور | @climavids" in draft.body
 
 
 def test_render_keeps_paragraphs_sentence_complete() -> None:
