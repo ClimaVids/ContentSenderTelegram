@@ -114,28 +114,62 @@ jobs:
 
       - name: Randomized human-like delay
         if: steps.schedule.outputs.publish == 'true'
-        run: |
-          set -euo pipefail
-          sleep "${{ steps.schedule.outputs.delay }}m"
+        run: sleep "${{ steps.schedule.outputs.delay }}m"
 
-      - name: Verify Telegram bot access
+      - name: Verify Telegram bot and destination access
         if: steps.schedule.outputs.publish == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          set -euo pipefail
           python - <<'PY'
           import os
           import requests
+
           token = os.environ["TELEGRAM_BOT_TOKEN"]
-          chat_id = os.environ["TELEGRAM_CHAT_ID"]
-          response = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=20)
-          response.raise_for_status()
-          data = response.json()
-          if not data.get("ok"):
-              raise SystemExit(data.get("description", "Telegram getMe failed"))
-          print(f"telegram_bot_ok=true username=@{data['result'].get('username', '')}")
-          print(f"telegram_chat_id={chat_id}")
+          chat_id = int(os.environ["TELEGRAM_CHAT_ID"])
+          base = f"https://api.telegram.org/bot{token}"
+
+          me = requests.get(f"{base}/getMe", timeout=20)
+          me.raise_for_status()
+          me_data = me.json()
+          if not me_data.get("ok"):
+              raise SystemExit(me_data.get("description", "getMe failed"))
+          bot = me_data["result"]
+          print(f"telegram_bot_ok=true username=@{bot.get('username', '')}")
+
+          chat = requests.post(f"{base}/getChat", json={"chat_id": chat_id}, timeout=20)
+          chat.raise_for_status()
+          chat_data = chat.json()
+          if not chat_data.get("ok"):
+              raise SystemExit(f"getChat failed: {chat_data.get('description', 'unknown')}")
+          target = chat_data["result"]
+          target_type = target.get("type", "unknown")
+          print(f"destination_type={target_type}")
+
+          member = requests.post(
+              f"{base}/getChatMember",
+              json={"chat_id": chat_id, "user_id": bot["id"]},
+              timeout=20,
+          )
+          member.raise_for_status()
+          member_data = member.json()
+          if not member_data.get("ok"):
+              raise SystemExit(
+                  f"getChatMember failed: {member_data.get('description', 'unknown')}"
+              )
+          status = member_data["result"].get("status", "unknown")
+          print(f"bot_membership_status={status}")
+
+          if status in {"left", "kicked"}:
+              raise SystemExit("Bot is not a member of the destination.")
+          if target_type == "channel" and status not in {"administrator", "creator"}:
+              raise SystemExit("Bot must be administrator of the destination channel.")
+          if target_type in {"group", "supergroup"} and status not in {"member", "administrator", "creator"}:
+              raise SystemExit("Bot is not allowed to post in the destination group.")
+
+          print("telegram_destination_preflight=passed")
           PY
 
       - name: Publish one selected post
