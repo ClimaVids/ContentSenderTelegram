@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from climavids.config import DESTINATION
 from climavids.private_state import load as load_private, save as save_private
 from climavids.publishers.telegram import TelegramError, TelegramPublisher
 from climavids.remote_network import fetch_destinations
