@@ -55,10 +55,13 @@ def _token() -> str:
 
 
 def telegram_call(method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    # getUpdates uses Telegram long polling, so the HTTP client must allow
+    # the same long timeout instead of cutting it off after 30 seconds.
+    request_timeout = 250 if method == "getUpdates" else 30
     response = requests.post(
         f"https://api.telegram.org/bot{_token()}/{method}",
         json=payload or {},
-        timeout=30,
+        timeout=request_timeout,
     )
     response.raise_for_status()
     data = response.json()
@@ -103,6 +106,7 @@ def build_report() -> str:
     metrics = public.get("metrics", {}) if isinstance(public.get("metrics"), dict) else {}
     published = public.get("published", [])
     active = [x for x in private.get("destinations", {}).values() if x.get("active")]
+    last = public.get("last_publication") if isinstance(public.get("last_publication"), dict) else {}
     return (
         "📊 گزارش ContentSenderTelegram\n\n"
         f"🕒 {datetime.now(TZ):%Y-%m-%d %H:%M:%S} تهران\n"
@@ -114,7 +118,8 @@ def build_report() -> str:
         f"📥 آیتم خام: {metrics.get('last_raw_items', 'نامشخص')}\n"
         f"🎯 کاندیدها: {metrics.get('last_candidates', 'نامشخص')}\n"
         f"✅ موفق: {metrics.get('last_sent', 'نامشخص')}\n"
-        f"❌ ناموفق: {metrics.get('last_failed', 'نامشخص')}"
+        f"❌ ناموفق: {metrics.get('last_failed', 'نامشخص')}\n"
+        f"📤 آخرین انتشار: {last.get('at', 'ثبت نشده')}"
     )
 
 
@@ -191,7 +196,10 @@ def build_health() -> str:
                 healthy += 1
             else:
                 broken += 1
-                lines.append(f"⚠️ {chat.get('title') or entry.get('title')}: Bot={status}, ارسال={'خیر' if can_post is False else 'بررسی شود'}")
+                lines.append(
+                    f"⚠️ {chat.get('title') or entry.get('title')}: "
+                    f"Bot={status}, ارسال={'خیر' if can_post is False else 'بررسی شود'}"
+                )
         except Exception as exc:
             broken += 1
             lines.append(f"❌ {entry.get('title', 'مقصد')}: {type(exc).__name__}: {exc}")
@@ -329,9 +337,6 @@ def _handle_destination(update: dict[str, Any], chat: dict[str, Any], command: s
 
 
 def poll_updates() -> bool:
-    # We intentionally keep long-polling disabled here because GitHub Actions
-    # is a short-lived runner. Telegram requires webhook and getUpdates not to
-    # be active simultaneously, so clear any webhook before polling.
     telegram_call("deleteWebhook", {"drop_pending_updates": False})
     private = load_private()
     offset = int(private.get("update_offset", 0) or 0)
@@ -339,7 +344,7 @@ def poll_updates() -> bool:
         "getUpdates",
         {
             "offset": offset,
-            "timeout": 0,
+            "timeout": 240,
             "allowed_updates": ["message", "my_chat_member", "channel_post"],
         },
     ).get("result", [])
@@ -407,28 +412,22 @@ def poll_updates() -> bool:
                         save_private(data)
                         send_message(chat_id, "✅ پنل مالک ثبت شد.\n\n" + OWNER_HELP)
                 elif is_owner(chat_id):
-                    # Lazy dispatch is important: evaluating a dictionary of
-                    # function calls caused every command to fail when one
-                    # diagnostic function was missing.
                     if command == "/help":
-                        response = OWNER_HELP
+                        send_message(chat_id, OWNER_HELP)
                     elif command in {"/status", "/report"}:
-                        response = build_report()
+                        send_message(chat_id, build_report())
                     elif command == "/network":
-                        response = build_network_report()
+                        send_message(chat_id, build_network_report())
                     elif command == "/logs":
-                        response = build_logs()
+                        send_message(chat_id, build_logs())
                     elif command == "/health":
-                        response = build_health()
+                        send_message(chat_id, build_health())
                     elif command == "/test":
-                        response = build_test()
+                        send_message(chat_id, build_test())
                     elif command == "/run":
                         _run_manual_publish(chat_id)
-                        response = None
                     else:
-                        response = "❓ فرمان ناشناخته است. /help را بزنید."
-                    if response:
-                        send_message(chat_id, response)
+                        send_message(chat_id, "❓ فرمان ناشناخته است. /help را بزنید.")
                 elif command == "/help":
                     send_message(chat_id, PUBLIC_HELP)
 
@@ -436,7 +435,6 @@ def poll_updates() -> bool:
                 _handle_destination(update, chat, command, args)
 
         except Exception as exc:
-            # Never swallow owner-facing errors.
             try:
                 if chat_type == "private" and is_owner(chat_id):
                     send_message(chat_id, f"🚨 خطا در {command}: {type(exc).__name__}: {exc}")
