@@ -8,13 +8,6 @@ on:
     - cron: "23 3 * * 1"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  security-events: write
-  actions: read
-  checks: read
-  id-token: write
-
 jobs:
   codeql:
     name: CodeQL security review
@@ -41,10 +34,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: ossf/scorecard-action@0864cf8af7d4a9c6c4e8d7f5e5d6f7c6b3a2d1e0
+      - uses: ossf/scorecard-action@v2.4.0
         with:
-          results_file: scorecard-results.json
-          results_format: json
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          publish_results: true
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: scorecard-results.sarif
