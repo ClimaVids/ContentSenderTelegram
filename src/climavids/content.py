@@ -131,25 +131,52 @@ def _footer(style: str) -> str:
 
 
 def _fit_body(core: list[str], footer: str, limit: int = 3900) -> str:
+    """Fit complete paragraphs while keeping the footer structurally separate."""
     fixed_footer = footer.strip()
     available = max(400, limit - len(fixed_footer) - 2)
     selected: list[str] = []
     used = 0
+
     for part in core:
         part = _normalize_text(part)
         if not part:
             continue
+        # Every selected paragraph is complete. Never append a fragment merely
+        # to use remaining characters.
+        if part[-1] not in TERMINATORS:
+            part = _complete_sentence(part, len(part) + 1)
         extra = len(part) + (2 if selected else 0)
         if used + extra > available:
             break
         selected.append(part)
         used += extra
+
     if not selected and core:
         first = _complete_sentence(core[0], available)
         if first:
             selected = [first]
+
     core_text = "\n\n".join(selected).strip()
+    if not core_text:
+        return fixed_footer
     return f"{core_text}\n\n{fixed_footer}".strip()
+
+
+def _ensure_first_paragraph_complete(body: str, footer: str) -> str:
+    """Final invariant: the public content starts with a complete sentence."""
+    parts = body.split("\n\n", 1)
+    if not parts:
+        return body
+    first = parts[0].strip()
+    if not first:
+        return body
+    if first[-1] in TERMINATORS:
+        return body
+    # This path is deliberately conservative: only add punctuation; never
+    # invent words or recover unknown missing content.
+    first = first.rstrip(" \t") + "."
+    remainder = parts[1] if len(parts) == 2 else footer.strip()
+    return f"{first}\n\n{remainder}".strip()
 
 
 def render(item: NewsItem, style: str = "news") -> ContentDraft:
@@ -174,6 +201,8 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
 
     if len(body) > 3900:
         body = _fit_body(clean_core[:1], footer, limit=3900)
+
+    body = _ensure_first_paragraph_complete(body, footer)
 
     return ContentDraft(
         item_id=item.id,
