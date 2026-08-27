@@ -7,19 +7,11 @@ from climavids.models import ContentDraft, NewsItem
 
 PERSIAN_STYLES = ["news", "short", "question", "analysis"]
 DEFAULT_FOOTER = "🔗 ایمانی‌پور | @climavids"
-DEFAULT_CHANNEL_LINK = "🔗 https://t.me/climavids"
-AD_HANDLE = "@Clima_Vids"
 CTA_BY_STYLE = {
-    "news": "👥 عضو کانال شو تا از تازه‌ترین خبرها جا نمونی!\n📩 برای تبلیغات و همکاری: @Clima_Vids",
-    "short": "💬 نظرتو درباره این موضوع بگو!\n📩 تبلیغات و همکاری: @Clima_Vids",
-    "question": "💬 نظرتو بگو؛ تجربه یا دیدگاهت برامون مهمه!\n📩 تبلیغات و همکاری: @Clima_Vids",
-    "analysis": "🧠 این تحلیل رو برای یک دوست بفرست.\n📩 برای تبلیغات و همکاری: @Clima_Vids",
-}
-EMOJI_BY_STYLE = {
-    "news": "📰",
-    "short": "⚡",
-    "question": "❓",
-    "analysis": "💡",
+    "news": "👥 برای دریافت مطالب جدید، کانال ClimaVids را دنبال کنید!\n📩 تبلیغات و همکاری: @Clima_Vids",
+    "short": "💬 نظرتان درباره این موضوع چیست؟\n📩 تبلیغات و همکاری: @Clima_Vids",
+    "question": "💬 نظر و تجربه شما چیست؟\n📩 تبلیغات و همکاری: @Clima_Vids",
+    "analysis": "🧠 این مطلب را برای یک دوست علاقه‌مند به آب و اقلیم بفرستید.\n📩 تبلیغات و همکاری: @Clima_Vids",
 }
 
 SENTENCE_RE = re.compile(r"(?<=[.!؟!?؛:])\s+")
@@ -82,17 +74,6 @@ def _sentence_complete(text: str, max_chars: int) -> str:
     return " ".join(out).strip()
 
 
-def _headline(title: str, style: str) -> str:
-    clean = _normalize_text(title).strip(" .؛:")
-    words = clean.split()
-    if len(words) > 10:
-        clean = " ".join(words[:10]).rstrip("،,؛:.") + "…"
-    if not clean:
-        clean = "تازه‌ترین خبر در حوزه آب و اقلیم"
-    prefix = {"news": "🔥", "short": "⚡", "question": "❓", "analysis": "💡"}.get(style, "🔥")
-    return f"{prefix} {clean}"
-
-
 def _paragraphs(item: NewsItem, label: str, clean_summary: str, style: str) -> list[str]:
     title = _normalize_text(item.title)
     summary = _remove_duplicate_title(clean_summary, title)
@@ -101,24 +82,24 @@ def _paragraphs(item: NewsItem, label: str, clean_summary: str, style: str) -> l
 
     if style == "question":
         return [
-            f"📰 {_sentence_complete(summary, 520)}",
+            _sentence_complete(summary, 650),
             f"🌍 این خبر چه اثری بر {label} و زندگی مردم می‌تواند داشته باشد؟",
             "💬 تجربه یا نظر شما چیست؟",
         ]
     if style == "analysis":
         return [
-            f"📰 {_sentence_complete(summary, 500)}",
-            f"📊 مقایسه: این رویداد چه تفاوتی با وضعیت معمول در {label} دارد؟",
+            _sentence_complete(summary, 650),
+            f"📊 بررسی: این رویداد چه تفاوتی با وضعیت معمول در {label} دارد؟",
             "🧠 نتیجه: تصمیم‌های درست باید با داده، اقلیم و شرایط محلی سازگار باشند.",
         ]
     if style == "short":
         return [
-            f"⚡ {_sentence_complete(summary, 520)}",
+            _sentence_complete(summary, 650),
             f"💧 نکته مهم برای {label}: این موضوع می‌تواند بر مردم و تصمیم‌گیری‌ها اثر بگذارد.",
         ]
     return [
-        f"📰 {_sentence_complete(summary, 520)}",
-        f"💧 چرا مهم است؟ چون مستقیماً با {label} و تصمیم‌های روزمره مردم ارتباط دارد.",
+        _sentence_complete(summary, 650),
+        f"💧 چرا مهم است؟ چون با {label} و تصمیم‌های روزمره مردم ارتباط دارد.",
         "🧠 اصل مهم: مدیریت پایدار باید متناسب با اقلیم و منابع واقعی هر منطقه باشد.",
     ]
 
@@ -136,7 +117,7 @@ def _hashtags(item: NewsItem) -> str:
 
 def _footer(style: str) -> str:
     cta = CTA_BY_STYLE.get(style, CTA_BY_STYLE["news"])
-    return f"{cta}\n\n{DEFAULT_FOOTER}\n\n{DEFAULT_CHANNEL_LINK}"
+    return f"{cta}\n\n{DEFAULT_FOOTER}"
 
 
 def render(item: NewsItem, style: str = "news") -> ContentDraft:
@@ -144,21 +125,21 @@ def render(item: NewsItem, style: str = "news") -> ContentDraft:
     title = _normalize_text(item.title)
     clean_summary = _normalize_text(item.summary or "")
 
-    body_parts = [_headline(title, style)]
-    body_parts.extend(_paragraphs(item, label, clean_summary, style))
-    body_parts.append(f"📌 منبع: {item.source_id}")
+    # Published Telegram text intentionally contains no headline/title, no
+    # source identifier, and no external source channel name or link.
+    body_parts = _paragraphs(item, label, clean_summary, style)
     body_parts.append(_hashtags(item))
     body_parts.append(_footer(style))
 
     body = "\n\n".join(body_parts)
     if len(body) > 3900:
-        body_parts[1] = f"📰 {_sentence_complete(_remove_duplicate_title(clean_summary, title), 360)}"
+        body_parts[0] = _sentence_complete(_remove_duplicate_title(clean_summary, title), 500)
         body = "\n\n".join(body_parts)
     body = body[:3900].rstrip()
 
     return ContentDraft(
         item_id=item.id,
-        title=_headline(title, style)[:120],
+        title="",
         body=body,
         style=style,
         with_image=False,

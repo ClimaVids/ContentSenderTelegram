@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from climavids.collectors.gdelt import collect as collect_gdelt
@@ -22,8 +23,12 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
     state = JsonState()
     raw = []
     source_counts: dict[str, int] = {}
+    source_errors: list[str] = []
+    sources = load_sources()
 
-    for source in load_sources():
+    print(f"PIPELINE_START dry_run={dry_run} enabled_sources={len(sources)} limit={limit}")
+
+    for source in sources:
         before = len(raw)
         try:
             if source.kind == "gdelt":
@@ -33,9 +38,12 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
             elif source.kind == "telegram_web":
                 raw.extend(collect_telegram(source, limit=30))
             source_counts[source.id] = len(raw) - before
+            print(f"SOURCE_OK id={source.id} kind={source.kind} items={source_counts[source.id]}")
         except Exception as exc:
             source_counts[source.id] = 0
-            print(f"SOURCE_ERROR {source.id}: {type(exc).__name__}: {exc}")
+            error = f"{source.id}: {type(exc).__name__}: {exc}"
+            source_errors.append(error)
+            print(f"SOURCE_ERROR {error}")
 
     unique = []
     for item in raw:
@@ -50,15 +58,14 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
 
     print(
         "PIPELINE_SUMMARY "
-        f"sources={source_counts} raw={len(raw)} unique={len(unique)} "
-        f"ranked={len(ranked)} selected={len(selected)}"
+        f"raw={len(raw)} unique={len(unique)} ranked={len(ranked)} "
+        f"selected={len(selected)} source_errors={len(source_errors)}"
     )
     if ranked:
-        top = ranked[:5]
         print(
             "TOP_CANDIDATES "
             + " | ".join(
-                f"{x.item.source_id}:{x.total}:{x.item.title[:90]}" for x in top
+                f"{x.item.source_id}:{x.total}:{x.item.title[:90]}" for x in ranked[:5]
             )
         )
 
@@ -66,6 +73,26 @@ def run(*, dry_run: bool = True, limit: int = 8) -> list[dict]:
     for i, scored in enumerate(selected):
         draft = render(scored.item, ["news", "short", "question", "analysis"][i % 4])
         output.append({"score": scored.total, "draft": draft.model_dump(mode="json")})
+
+    data = state.load()
+    metrics = data.setdefault("metrics", {})
+    metrics.update(
+        {
+            "last_run": datetime.now(timezone.utc).isoformat(),
+            "last_result": "dry-run" if dry_run else "pipeline-complete",
+            "last_sources": len(sources),
+            "last_source_counts": source_counts,
+            "last_source_errors": len(source_errors),
+            "last_raw_items": len(raw),
+            "last_unique_items": len(unique),
+            "last_candidates": len(ranked),
+            "last_selected": len(output),
+            "errors": (metrics.get("errors", []) + source_errors)[-20:],
+        }
+    )
+    state.save(data)
+
+    print(f"PIPELINE_END selected={len(output)}")
 
     if dry_run and output:
         Path("data/dry_run.json").write_text(
