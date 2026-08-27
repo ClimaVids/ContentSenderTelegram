@@ -20,16 +20,17 @@ def make_item(summary: str) -> NewsItem:
     )
 
 
-def test_render_does_not_duplicate_title_or_append_source_url() -> None:
+def test_render_hides_title_source_and_external_channel_details() -> None:
     draft = render(
         make_item("خشکی چمن‌ها، خشکی تدبیر؛ در لندن محدودیت مصرف آب اعمال شده است."),
         style="news",
     )
-    assert draft.body.count("خشکی چمن‌ها، خشکی تدبیر") == 1
+    assert draft.title == ""
+    assert "خشکی چمن‌ها، خشکی تدبیر" not in draft.body
     assert "https://example.com/source" not in draft.body
-    assert "📌 منبع: groundwater-resources" in draft.body
-    assert "🔗 ایمانی‌پور | @ClimaVids" in draft.body
-    assert "🔗 https://t.me/climavid" in draft.body
+    assert "groundwater-resources" not in draft.body
+    assert "🔗 ایمانی‌پور | @climavids" in draft.body
+    assert "https://t.me/climavids" not in draft.body
 
 
 def test_render_keeps_paragraphs_sentence_complete() -> None:
@@ -39,8 +40,8 @@ def test_render_keeps_paragraphs_sentence_complete() -> None:
         "جمله سوم باید کامل بماند و در میانه عبارت بریده نشود."
     )
     draft = render(make_item(long_summary), style="news")
-    paragraph = draft.body.split("\n\n")[1]
-    assert not paragraph.endswith(("،", ",", ":", "؛", "-", "…"))
+    assert draft.body
+    assert not draft.body.endswith(("،", ",", ":", "؛", "-", "…"))
 
 
 def test_telegram_publisher_rejects_non_numeric_chat_id(monkeypatch: pytest.MonkeyPatch) -> None:
