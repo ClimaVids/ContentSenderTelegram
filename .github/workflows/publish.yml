@@ -1,12 +1,12 @@
-name: ClimaVids Telegram Publisher
+name: ClimaVids Telegram Network Publisher
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
-  group: climavids-publisher
+  group: climavids-network-publisher
   cancel-in-progress: false
 
 permissions:
@@ -16,8 +16,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,235 +35,66 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Validate Telegram bot token
+      - name: Validate bot token
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           set -euo pipefail
           test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN is missing"; exit 1; }
 
-      - name: Check daily publication window
-        id: schedule
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import random
-          from datetime import datetime, time
-          from pathlib import Path
-          from zoneinfo import ZoneInfo
-
-          TZ = ZoneInfo("Asia/Tehran")
-          START_TIME = time(12, 0)
-          END_TIME = time(23, 50)
-          STATE_PATH = Path("data/schedule_state.json")
-          STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-          now = datetime.now(TZ)
-          manual_run = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
-
-          try:
-              state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-          except Exception:
-              state = {}
-
-          published_dates = set(state.get("published_dates", []))
-          old_slots = state.get("published_slots", {})
-          if isinstance(old_slots, dict):
-              published_dates.update(
-                  key.split("|", 1)[0]
-                  for key in old_slots
-                  if isinstance(key, str) and "|" in key
-              )
-
-          today = now.strftime("%Y-%m-%d")
-          should_publish = manual_run or (
-              START_TIME <= now.timetz().replace(tzinfo=None) <= END_TIME
-              and today not in published_dates
-          )
-
-          if not should_publish:
-              print(f"publish=false local_time={now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-                  f.write("publish=false\n")
-              raise SystemExit(0)
-
-          delay_minutes = 0 if manual_run else random.randint(0, 5)
-          publication_key = f"manual-{now.strftime('%Y%m%d-%H%M%S')}" if manual_run else today
-          print(
-              f"publish=true date={today} key={publication_key} "
-              f"local_time={now.strftime('%Y-%m-%d %H:%M:%S %Z')} delay_minutes={delay_minutes}"
-          )
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write("publish=true\n")
-              f.write(f"publication_key={publication_key}\n")
-              f.write(f"publish_date={today}\n")
-              f.write(f"delay={delay_minutes}\n")
-          PY
-
-      - name: Randomized delay
-        if: steps.schedule.outputs.publish == 'true'
-        run: sleep "${{ steps.schedule.outputs.delay }}m"
-
-      - name: Verify bot identity and destination access
-        if: steps.schedule.outputs.publish == 'true'
+      - name: Publish due content to the ClimaVids network
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import os
-          import requests
-          from climavids.config import DESTINATION
+          python -m climavids.cli publish-network
 
-          token = os.environ["TELEGRAM_BOT_TOKEN"]
-          base = f"https://api.telegram.org/bot{token}"
-
-          me = requests.get(f"{base}/getMe", timeout=20)
-          me.raise_for_status()
-          me_data = me.json()
-          if not me_data.get("ok"):
-              raise SystemExit(me_data.get("description", "getMe failed"))
-          bot = me_data["result"]
-          print(f"BOT_IDENTITY username=@{bot.get('username', '')} id={bot.get('id')}")
-
-          chat = requests.post(f"{base}/getChat", json={"chat_id": DESTINATION}, timeout=20)
-          chat.raise_for_status()
-          chat_data = chat.json()
-          if not chat_data.get("ok"):
-              raise SystemExit(f"getChat failed: {chat_data.get('description', 'unknown')}")
-          target = chat_data["result"]
-          print(f"DESTINATION type={target.get('type')} title={target.get('title') or target.get('username')}")
-
-          member = requests.post(
-              f"{base}/getChatMember",
-              json={"chat_id": DESTINATION, "user_id": bot["id"]},
-              timeout=20,
-          )
-          member.raise_for_status()
-          member_data = member.json()
-          if not member_data.get("ok"):
-              raise SystemExit(f"getChatMember failed: {member_data.get('description', 'unknown')}")
-          status = member_data["result"].get("status", "unknown")
-          print(f"BOT_MEMBERSHIP status={status}")
-
-          if status in {"left", "kicked"}:
-              raise SystemExit("Bot is not a member of @climavids.")
-          if target.get("type") == "channel" and status not in {"administrator", "creator"}:
-              raise SystemExit("Bot must be administrator of @climavids.")
-
-          print("DESTINATION_PREFLIGHT=passed")
-          PY
-
-      - name: Publish one selected post
-        if: steps.schedule.outputs.publish == 'true'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: |
-          set -euo pipefail
-          python -m climavids.cli publish --limit 1
-
-      - name: Mark publication day
-        if: steps.schedule.outputs.publish == 'true'
-        env:
-          PUBLICATION_DATE: ${{ steps.schedule.outputs.publish_date }}
-          PUBLICATION_KEY: ${{ steps.schedule.outputs.publication_key }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json
-          import os
-          from datetime import datetime
-          from pathlib import Path
-          from zoneinfo import ZoneInfo
-
-          path = Path("data/schedule_state.json")
-          try:
-              state = json.loads(path.read_text(encoding="utf-8"))
-          except Exception:
-              state = {}
-
-          published_dates = state.setdefault("published_dates", [])
-          date = os.environ["PUBLICATION_DATE"]
-          if date not in published_dates:
-              published_dates.append(date)
-          state["published_dates"] = sorted(set(published_dates))[-180:]
-          state["last_publication"] = {
-              "date": date,
-              "key": os.environ["PUBLICATION_KEY"],
-              "at": datetime.now(ZoneInfo("Asia/Tehran")).isoformat(),
-          }
-          path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-          print(f"Recorded publication day: {date}")
-          PY
-
-      - name: Persist publication state
-        if: steps.schedule.outputs.publish == 'true'
+      - name: Persist public runtime state
+        if: always()
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f data/state.json data/schedule_state.json 2>/dev/null || true
+          git add -f data/state.json data/private_state.enc 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No state changes to persist."
             exit 0
           fi
-          git commit -m "chore: persist publication state"
+          git commit -m "chore: persist network publication state" || true
           for attempt in 1 2 3; do
             if git push origin HEAD:main; then
-              echo "State successfully persisted."
+              echo "State persisted."
               exit 0
             fi
-            echo "Push attempt ${attempt} failed; synchronizing with main..."
             git fetch origin main
             git rebase origin/main || { git rebase --abort || true; exit 1; }
             sleep $((attempt * 2))
           done
-          echo "State persistence failed after 3 attempts." >&2
+          echo "State persistence failed." >&2
           exit 1
 
-      - name: Report failure to owner from persisted state
+      - name: Notify owner about publication failure
         if: failure()
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           python - <<'PY'
-          import json
           import os
-          from pathlib import Path
-          import requests
-
-          token = os.environ.get("TELEGRAM_BOT_TOKEN")
-          if not token:
-              raise SystemExit(0)
-          path = Path("data/owner_state.json")
-          if not path.exists():
-              raise SystemExit(0)
-          state = json.loads(path.read_text(encoding="utf-8"))
-          owner = state.get("owner_chat_id")
-          if not owner:
-              raise SystemExit(0)
-          text = (
-              "🚨 ContentSenderTelegram\n\n"
-              "انتشار خودکار با خطا متوقف شد.\n"
-              f"Workflow: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\n"
-              "برای جزئیات، /logs را ارسال کنید."
+          from climavids.owner import send_failure_alert
+          send_failure_alert(
+              f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              "ClimaVids Network Publisher",
           )
-          requests.post(
-              f"https://api.telegram.org/bot{token}/sendMessage",
-              json={"chat_id": int(owner), "text": text, "disable_web_page_preview": True},
-              timeout=20,
-          ).raise_for_status()
           PY
 
-      - name: Report failure to GitHub Issue
+      - name: Create GitHub failure issue
         if: failure()
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
           gh issue create \
-            --title "Telegram publisher failure — $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --body "Automated Telegram publisher failed. Review this GitHub Actions run and its logs. Secrets are not included in this report." \
+            --title "Telegram network publisher failure — $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --body "The ContentSenderTelegram network publisher failed. Review the GitHub Actions run and /logs in the owner panel." \
             || true
