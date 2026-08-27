@@ -3,13 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from climavids.owner import OWNER_HELP, build_report, send_owner
 from climavids.pipeline import run
 from climavids.publishers.telegram import TelegramPublisher
 from climavids.state import JsonState
-from pathlib import Path
-import json as _json
 
 
 def _record_metrics(**values: object) -> None:
@@ -26,10 +25,10 @@ def _owner_id() -> str:
     if not path.exists():
         return ""
     try:
-        data = _json.loads(path.read_text(encoding="utf-8"))
-    except (_json.JSONDecodeError, OSError):
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
         return ""
-    return str(data.get("owner_chat_id", "")).strip()
+    return str(data.get("owner_chat_id") or "").strip()
 
 
 def _send_owner_command_report(text: str) -> None:
@@ -41,10 +40,7 @@ def _send_owner_command_report(text: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "command",
-        choices=["dry-run", "publish", "health", "owner-report", "owner-help"],
-    )
+    parser.add_argument("command", choices=["dry-run", "publish", "health", "owner-report", "owner-help"])
     parser.add_argument("--limit", type=int, default=8)
     args = parser.parse_args()
 
@@ -54,24 +50,12 @@ def main() -> None:
 
     if args.command == "health":
         state = JsonState()
-        print(
-            json.dumps(
-                {
-                    "ok": True,
-                    "published_count": len(state.load().get("published", [])),
-                },
-                ensure_ascii=False,
-            )
-        )
+        print(json.dumps({"ok": True, "published_count": len(state.load().get("published", []))}, ensure_ascii=False))
         return
 
     if args.command == "dry-run":
         items = run(dry_run=True, limit=args.limit)
-        _record_metrics(
-            last_result="dry-run",
-            last_candidates=len(items),
-            last_selected=len(items),
-        )
+        _record_metrics(last_result="dry-run", last_candidates=len(items), last_selected=len(items))
         print(json.dumps({"generated": len(items)}, ensure_ascii=False))
         return
 
@@ -90,8 +74,7 @@ def main() -> None:
                 last_selected=1,
                 last_score=items[0].get("score"),
             )
-            publisher = TelegramPublisher()
-            result = publisher.send_text(draft["body"])
+            result = TelegramPublisher().send_text(draft["body"])
             message_id = result.get("result", {}).get("message_id")
             state = JsonState()
             state.mark_published(draft["item_id"], message_id)
