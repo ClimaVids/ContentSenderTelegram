@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: climavids-network-monitor
+  group: climavids-telegram-state
   cancel-in-progress: false
 
 permissions:
@@ -65,15 +65,11 @@ jobs:
           now = datetime.now(ZoneInfo("Asia/Tehran"))
           if now.hour == 9 and now.minute < 5:
               send_scheduled_report("morning")
-              print("scheduled_report=morning")
           elif now.hour == 21 and now.minute < 5:
               send_scheduled_report("night")
-              print("scheduled_report=night")
-          else:
-              print("scheduled_report=none")
           PY
 
-      - name: Persist encrypted private state
+      - name: Persist encrypted private network state
         run: |
           set -euo pipefail
           if [ ! -f data/private_state.enc ]; then
