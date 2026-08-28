@@ -33,6 +33,22 @@ const OWNER_HELP = `🔐 پنل خصوصی مالک ContentSenderTelegram
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 const TZ = "Asia/Tehran";
+const OWNER_KEYBOARD = { inline_keyboard: [
+  [{ text: "📊 وضعیت کلی", callback_data: "owner:status" }, { text: "📋 گزارش کامل", callback_data: "owner:report" }],
+  [{ text: "🌐 شبکه مقصدها", callback_data: "owner:network" }, { text: "🧾 لاگ‌ها", callback_data: "owner:logs" }],
+  [{ text: "🩺 سلامت", callback_data: "owner:health" }, { text: "🧪 تست", callback_data: "owner:test" }],
+  [{ text: "🚀 انتشار فوری", callback_data: "owner:run" }],
+] };
+
+const PUBLIC_KEYBOARD = { inline_keyboard: [
+  [{ text: "⚙️ تنظیمات مقصد", callback_data: "dest:setup" }],
+  [{ text: "📝 تعداد پست روزانه", callback_data: "dest:posts" }, { text: "⏰ زمان‌بندی", callback_data: "dest:times" }],
+  [{ text: "▶️ فعال‌سازی", callback_data: "dest:on" }, { text: "⏸ توقف", callback_data: "dest:off" }],
+  [{ text: "❓ راهنما", callback_data: "dest:help" }],
+] };
+
+const SETTINGS_KEYBOARD = PUBLIC_KEYBOARD;
+
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
@@ -191,6 +207,41 @@ export class BotState extends DurableObject {
       return;
     }
 
+    const callback = update.callback_query || null;
+    if (callback) {
+      const callbackChat = callback.message?.chat;
+      const callbackId = Number(callback.from?.id || 0);
+      if (!callbackChat || callbackChat.type !== "private") {
+        try { await telegram(this.env, "answerCallbackQuery", { callback_query_id: callback.id, text: "این منو فقط در گفت‌وگوی خصوصی مالک یا مقصد قابل استفاده است." }); } catch {}
+        return;
+      }
+      const owner = await this.owner();
+      const isOwner = owner && String(owner) === String(callbackChat.id) && String(callbackId) === String(owner);
+      const data = String(callback.data || "");
+      try {
+        if (data.startsWith("owner:") && isOwner) {
+          const action = data.slice(6);
+          if (action === "status" || action === "report") await telegram(this.env, "sendMessage", { chat_id: Number(owner), text: await this.buildReport(), reply_markup: OWNER_KEYBOARD });
+          else if (action === "network") await telegram(this.env, "sendMessage", { chat_id: Number(owner), text: await this.buildNetwork(), reply_markup: OWNER_KEYBOARD });
+          else if (action === "logs") await telegram(this.env, "sendMessage", { chat_id: Number(owner), text: await this.buildLogs(), reply_markup: OWNER_KEYBOARD });
+          else if (action === "health") await telegram(this.env, "sendMessage", { chat_id: Number(owner), text: await this.buildHealth(), reply_markup: OWNER_KEYBOARD });
+          else if (action === "test") await telegram(this.env, "sendMessage", { chat_id: Number(owner), text: await this.buildTest(), reply_markup: OWNER_KEYBOARD });
+          else if (action === "run") {
+            await this.write("force_run", { requested_at: new Date().toISOString(), requested_by: Number(owner) });
+            await this.event("manual_run_requested", JSON.stringify({ requested_by: Number(owner), via: "button" }));
+            await telegram(this.env, "sendMessage", { chat_id: Number(owner), text: "🚀 درخواست انتشار فوری ثبت شد. در اولین چرخه موتور انتشار اجرا می‌شود.", reply_markup: OWNER_KEYBOARD });
+          }
+        } else {
+          await telegram(this.env, "sendMessage", { chat_id: Number(callbackChat.id), text: PUBLIC_HELP, reply_markup: PUBLIC_KEYBOARD });
+        }
+        await telegram(this.env, "answerCallbackQuery", { callback_query_id: callback.id });
+      } catch (error) {
+        try { await telegram(this.env, "answerCallbackQuery", { callback_query_id: callback.id, text: "⚠️ خطا؛ دوباره تلاش کنید." }); } catch {}
+        await this.event("callback_error", String(error.message || error));
+      }
+      return;
+    }
+
     if (!msg?.chat) return;
     const [cmd, args] = command(msg.text);
     if (!cmd) return;
@@ -200,7 +251,7 @@ export class BotState extends DurableObject {
     if (chat.type === "private") {
       const owner = await this.owner();
       if (cmd === "/start") {
-        await telegram(this.env, "sendMessage", { chat_id: chatId, text: owner && String(owner) === String(chatId) ? OWNER_HELP : PUBLIC_HELP });
+        await telegram(this.env, "sendMessage", { chat_id: chatId, text: owner && String(owner) === String(chatId) ? OWNER_HELP : PUBLIC_HELP, reply_markup: owner && String(owner) === String(chatId) ? OWNER_KEYBOARD : PUBLIC_KEYBOARD });
         return;
       }
       if (cmd === "/claim") {
@@ -212,11 +263,11 @@ export class BotState extends DurableObject {
         await this.write("owner_username", msg.from?.username || null);
         await this.write("claimed_at", new Date().toISOString());
         await this.event("owner_claimed", JSON.stringify({ chat_id: chatId }));
-        await telegram(this.env, "sendMessage", { chat_id: chatId, text: `✅ پنل مالک ثبت شد.\n\n${OWNER_HELP}` });
+        await telegram(this.env, "sendMessage", { chat_id: chatId, text: `✅ پنل مالک ثبت شد.\n\n${OWNER_HELP}`, reply_markup: OWNER_KEYBOARD });
         return;
       }
       if (owner && String(owner) === String(chatId)) {
-        if (cmd === "/help") await telegram(this.env, "sendMessage", { chat_id: chatId, text: OWNER_HELP });
+        if (cmd === "/help") await telegram(this.env, "sendMessage", { chat_id: chatId, text: OWNER_HELP, reply_markup: OWNER_KEYBOARD });
         else if (cmd === "/status" || cmd === "/report") await telegram(this.env, "sendMessage", { chat_id: chatId, text: await this.buildReport() });
         else if (cmd === "/network") await telegram(this.env, "sendMessage", { chat_id: chatId, text: await this.buildNetwork() });
         else if (cmd === "/logs") await telegram(this.env, "sendMessage", { chat_id: chatId, text: await this.buildLogs() });
@@ -228,7 +279,7 @@ export class BotState extends DurableObject {
           await telegram(this.env, "sendMessage", { chat_id: chatId, text: "✅ درخواست اجرای فوری ثبت شد. موتور انتشار در اولین چرخه GitHub آن را اجرا می‌کند." });
         } else await telegram(this.env, "sendMessage", { chat_id: chatId, text: "❓ فرمان ناشناخته است. /help را بزنید." });
       } else if (cmd === "/help") {
-        await telegram(this.env, "sendMessage", { chat_id: chatId, text: PUBLIC_HELP });
+        await telegram(this.env, "sendMessage", { chat_id: chatId, text: PUBLIC_HELP, reply_markup: PUBLIC_KEYBOARD });
       }
       return;
     }
@@ -242,7 +293,7 @@ export class BotState extends DurableObject {
     const chat = msg.chat;
     const chatId = Number(chat.id);
     if (cmd === "/help") {
-      await telegram(this.env, "sendMessage", { chat_id: chatId, text: PUBLIC_HELP });
+      await telegram(this.env, "sendMessage", { chat_id: chatId, text: PUBLIC_HELP, reply_markup: PUBLIC_KEYBOARD });
       return;
     }
     const userId = Number(msg.from?.id || 0);
@@ -258,7 +309,7 @@ export class BotState extends DurableObject {
     const current = all[key];
 
     if (cmd === "/setup") {
-      await telegram(this.env, "sendMessage", { chat_id: chatId, text: `⚙️ تنظیمات این مقصد\n\nوضعیت: ${current.active ? "فعال ✅" : "متوقف ⏸"}\nپست روزانه: ${current.posts_per_day}\nزمان‌ها: ${(current.times || []).join(", ")}\n\nنمونه: /posts 2\nسپس: /times 10:00 20:00` });
+      await telegram(this.env, "sendMessage", { chat_id: chatId, text: `⚙️ تنظیمات این مقصد\n\nوضعیت: ${current.active ? "فعال ✅" : "متوقف ⏸"}\nپست روزانه: ${current.posts_per_day}\nزمان‌ها: ${(current.times || []).join(", ")}\n\nنمونه: /posts 2\nسپس: /times 10:00 20:00`, reply_markup: SETTINGS_KEYBOARD });
       return;
     }
     if (cmd === "/posts") {
@@ -275,7 +326,7 @@ export class BotState extends DurableObject {
       current.updated_at = new Date().toISOString();
       all[key] = current;
       await this.write("destinations", all);
-      await telegram(this.env, "sendMessage", { chat_id: chatId, text: `✅ روزانه ${n} پست تنظیم شد.` });
+      await telegram(this.env, "sendMessage", { chat_id: chatId, text: `✅ روزانه ${n} پست تنظیم شد.`, reply_markup: SETTINGS_KEYBOARD });
       return;
     }
     if (cmd === "/times") {
@@ -289,7 +340,7 @@ export class BotState extends DurableObject {
       current.updated_at = new Date().toISOString();
       all[key] = current;
       await this.write("destinations", all);
-      await telegram(this.env, "sendMessage", { chat_id: chatId, text: `✅ زمان‌های ارسال ثبت شد: ${times.join(", ")}` });
+      await telegram(this.env, "sendMessage", { chat_id: chatId, text: `✅ زمان‌های ارسال ثبت شد: ${times.join(", ")}`, reply_markup: SETTINGS_KEYBOARD });
       return;
     }
     if (cmd === "/on" || cmd === "/off") {
@@ -298,7 +349,7 @@ export class BotState extends DurableObject {
       current.updated_at = new Date().toISOString();
       all[key] = current;
       await this.write("destinations", all);
-      await telegram(this.env, "sendMessage", { chat_id: chatId, text: current.active ? "✅ ارسال محتوا فعال شد." : "⏸ ارسال محتوا متوقف شد." });
+      await telegram(this.env, "sendMessage", { chat_id: chatId, text: current.active ? "✅ ارسال محتوا فعال شد." : "⏸ ارسال محتوا متوقف شد.", reply_markup: SETTINGS_KEYBOARD });
       return;
     }
     await telegram(this.env, "sendMessage", { chat_id: chatId, text: "❓ فرمان ناشناخته است. /help را بزنید." });
