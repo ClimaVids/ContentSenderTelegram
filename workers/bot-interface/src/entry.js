@@ -17,15 +17,12 @@ async function configureWebhook(env) {
       url: `${workerUrl}/telegram/webhook`,
       secret_token: secret,
       drop_pending_updates: false,
-      allowed_updates: ["message", "my_chat_member", "channel_post"],
+      allowed_updates: ["message", "my_chat_member", "channel_post", "callback_query"],
     }),
   });
   if (!response.ok) throw new Error(`Telegram webhook setup failed: ${response.status}`);
 }
 
-// Production entrypoint. The wrapper supplies the Durable Object dispatcher and
-// derives the webhook secret from the existing Telegram token, so no extra
-// secret is required.
 export class BotState extends BaseBotState {
   async fetch(request) {
     return handleDurableRequest(request, this.env, this);
@@ -42,8 +39,6 @@ export default {
   },
 
   async scheduled(_event, env, ctx) {
-    // Self-heal the Telegram webhook periodically. This removes dependence on
-    // a manual GitHub workflow run if Telegram or Cloudflare ever resets it.
     ctx.waitUntil(configureWebhook(env).catch(() => undefined));
   },
 };
