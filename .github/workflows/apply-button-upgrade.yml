@@ -1,0 +1,40 @@
+name: Apply Telegram Button Upgrade
+
+on:
+  push:
+    paths:
+      - tools/enable_bot_buttons.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: button-upgrade
+  cancel-in-progress: true
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply button upgrade
+        run: python tools/enable_bot_buttons.py
+
+      - name: Check JavaScript syntax
+        run: node --check workers/bot-interface/src/index.js
+
+      - name: Commit upgraded bot interface
+        run: |
+          if git diff --quiet -- workers/bot-interface/src/index.js; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add workers/bot-interface/src/index.js
+          git commit -m "Enable Telegram inline button menus"
+          git push
