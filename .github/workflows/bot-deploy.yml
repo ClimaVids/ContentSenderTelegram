@@ -46,20 +46,30 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: printf '%s' "$TELEGRAM_BOT_TOKEN" | npx --yes wrangler@4.127.0 secret put TELEGRAM_BOT_TOKEN --config wrangler.jsonc
 
-      - name: Configure Telegram webhook
+      - name: Configure Telegram webhook with button callbacks
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           set -euo pipefail
           SECRET="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | sha256sum | awk '{print $1}')"
+          python - <<'PY' > webhook.json
+          import json, os
+          print(json.dumps({
+              "url": "https://climavids-content-sender-bot.birjand-climate.workers.dev/telegram/webhook",
+              "secret_token": os.environ["SECRET"] if "SECRET" in os.environ else "",
+              "drop_pending_updates": False,
+              "allowed_updates": ["message", "my_chat_member", "channel_post", "callback_query"],
+          }))
+          PY
           curl --fail --silent --show-error \
             -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
             -H 'Content-Type: application/json' \
-            --data "{\"url\":\"https://climavids-content-sender-bot.birjand-climate.workers.dev/telegram/webhook\",\"secret_token\":\"${SECRET}\",\"drop_pending_updates\":false,\"allowed_updates\":[\"message\",\"my_chat_member\",\"channel_post\"]}"
+            --data-binary @webhook.json
+          echo
 
       - name: Verify webhook configuration
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo" | python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") and d["result"].get("url","" ).endswith("/telegram/webhook"), d; print(json.dumps(d["result"], ensure_ascii=False))'
+          curl --fail --silent --show-error "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo" | python -c 'import json,sys; d=json.load(sys.stdin); r=d.get("result",{}); assert d.get("ok") and r.get("url","").endswith("/telegram/webhook"), d; assert "callback_query" in (r.get("allowed_updates") or []), r; print(json.dumps(r, ensure_ascii=False))'
