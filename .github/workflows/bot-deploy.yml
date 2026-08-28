@@ -1,0 +1,65 @@
+name: Deploy Telegram Bot
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bot-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate Worker source
+        working-directory: workers/bot-interface
+        run: |
+          node --check src/index.js
+          node --check src/entry.js
+
+      - name: Deploy Cloudflare Worker
+        working-directory: workers/bot-interface
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.127.0 deploy --config wrangler.jsonc
+
+      - name: Install Telegram token in Worker
+        working-directory: workers/bot-interface
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: printf '%s' "$TELEGRAM_BOT_TOKEN" | npx --yes wrangler@4.127.0 secret put TELEGRAM_BOT_TOKEN --config wrangler.jsonc
+
+      - name: Configure Telegram webhook
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          SECRET="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | sha256sum | awk '{print $1}')"
+          curl --fail --silent --show-error \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            -H 'Content-Type: application/json' \
+            --data "{\"url\":\"https://climavids-content-sender-bot.birjand-climate.workers.dev/telegram/webhook\",\"secret_token\":\"${SECRET}\",\"drop_pending_updates\":false,\"allowed_updates\":[\"message\",\"my_chat_member\",\"channel_post\"]}"
+
+      - name: Verify webhook configuration
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo" | python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ok") and d["result"].get("url","" ).endswith("/telegram/webhook"), d; print(json.dumps(d["result"], ensure_ascii=False))'
