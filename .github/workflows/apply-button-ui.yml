@@ -1,0 +1,46 @@
+name: Apply Telegram Button UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/patch_owner_ui.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-button-ui
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply UI patch
+        run: python3 tools/patch_owner_ui.py
+
+      - name: Validate Worker source
+        working-directory: workers/bot-interface
+        run: |
+          node --check src/index.js
+          node --check src/entry.js
+
+      - name: Commit UI changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No changes required."
+            exit 0
+          fi
+          git add workers/bot-interface/src/index.js
+          git commit -m "Add button-based Telegram menus"
+          git push
