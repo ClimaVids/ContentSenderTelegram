@@ -23,66 +23,58 @@ GitHub Actions
   └─ انتشار به مقصدهای فعال
 ```
 
-Cloudflare توصیه می‌کند برای Durable Objectهای جدید از SQLite-backed storage استفاده شود. رابط Worker نیز از `ctx.waitUntil()` برای پردازش پس از پاسخ Webhook استفاده می‌کند تا Telegram سریع پاسخ HTTP دریافت کند.
-
 ## تنظیمات موردنیاز GitHub
 
 در Repository `ClimaVids/ContentSenderTelegram` این Secrets را اضافه کنید:
 
-1. `TELEGRAM_BOT_TOKEN` — از قبل موجود است.
-2. `CLOUDFLARE_ACCOUNT_ID` — شناسه Account در Cloudflare.
-3. `CLOUDFLARE_API_TOKEN` — API Token با دسترسی لازم برای Workers Scripts/Deploy.
+1. `TELEGRAM_BOT_TOKEN`
+2. `CLOUDFLARE_ACCOUNT_ID`
+3. `CLOUDFLARE_API_TOKEN`
 
-هیچ Secret دیگری برای مالک Telegram لازم نیست.
+برای مالک Telegram نیازی به Secret جداگانه نیست؛ مالک با `/claim` ثبت می‌شود.
 
-یک Repository Variable نیز اضافه کنید:
-
-`CLIMAVIDS_BOT_API_URL`
-
-مقدار آن URL عمومی Worker است، مثلاً:
-
-`https://climavids-content-sender-bot.<subdomain>.workers.dev`
-
-این URL محرمانه نیست و به‌صورت Variable نگهداری می‌شود، نه Secret.
+`CLIMAVIDS_BOT_API_URL` یک URL عمومی و غیرمحرمانه است. Publisher در حال حاضر URL رسمی Worker را به‌عنوان fallback داخلی نیز می‌شناسد تا نبودن Repository Variable باعث قطع ارتباط نشود.
 
 ## Deploy
 
-Workflow زیر با هر تغییر در `workers/bot-interface/` قابل اجرا است:
+Workflow `bot-deploy.yml` رابط Worker را Deploy می‌کند، Secret ربات را به Worker می‌دهد و Webhook تلگرام را با این رویدادها تنظیم می‌کند:
 
-`Deploy ClimaVids Telegram Bot Interface`
+- `message`
+- `my_chat_member`
+- `channel_post`
+- `callback_query`
 
-این Workflow:
+در هر Deploy، تنظیم Webhook نیز Verify می‌شود.
 
-- JavaScript Worker را syntax-check می‌کند.
-- Worker و Durable Object را deploy می‌کند.
-- `TELEGRAM_BOT_TOKEN` را به Worker می‌دهد.
-- Secret مربوط به Webhook را به‌صورت SHA-256 از همان Bot Token تولید و ذخیره می‌کند.
+## معماری دریافت Update
 
-## فعال‌کردن Webhook
+**Webhook تنها مسیر دریافت Updateهای Bot است.**
 
-پس از موفقیت Deploy، URL Worker را بردارید.
+Workflow قدیمی Polling (`owner-monitor.yml`) حذف شده است و نباید هیچ Workflow دیگری `getUpdates` یا `deleteWebhook` را برای این Bot اجرا کند. وجود هم‌زمان Polling و Webhook می‌تواند باعث خطای Telegram `409 Conflict` شود.
 
-سپس Workflow زیر را از Actions اجرا کنید:
+## انتشار
 
-`Set ClimaVids Telegram Webhook`
+Workflow `publish.yml` هر ۵ دقیقه اجرا می‌شود و:
 
-در ورودی `worker_url` فقط URL اصلی Worker را وارد کنید؛ Workflow خودش `/telegram/webhook` را اضافه و Webhook را ثبت می‌کند.
+1. Token را بررسی می‌کند.
+2. اتصال به Bot Interface و فهرست مقصدها را Verify می‌کند.
+3. `publish-network` را اجرا می‌کند.
+4. درخواست `force_run` ثبت‌شده توسط `/run` را مصرف می‌کند.
+5. state و خطاها را ثبت می‌کند.
 
-## قطع Polling قدیمی
+## تست مالک
 
-وقتی `CLIMAVIDS_BOT_API_URL` در Repository Variables قرار گرفت، Workflow قدیمی `owner-monitor.yml` خودکار به حالت no-op می‌رود. این موضوع مهم است، چون بعد از Webhook نباید Workflow قدیمی دوباره `deleteWebhook` یا `getUpdates` را اجرا کند.
+در چت خصوصی Bot:
 
-## تست
+1. `/claim`
+2. `/status`
+3. `/health`
+4. `/test`
+5. دکمه `🚀 انتشار فوری`
+6. مشاهده `🧾 لاگ‌ها`
 
-بعد از Webhook:
+## نکته درباره مقصدها
 
-1. در چت خصوصی Bot، `/claim`
-2. سپس `/status`
-3. سپس `/test`
-4. برای تست انتشار: `/run`
+`my_chat_member` برای ثبت خودکار گروه‌ها و کانال‌هایی که Bot در آنها Administrator می‌شود استفاده می‌شود.
 
-در گروه نیز Bot را Administrator کنید و `/setup` را اجرا کنید.
-
-## نکته درباره کانال‌ها
-
-رویداد `my_chat_member` برای ثبت کانال هنگام Administrator شدن Bot پشتیبانی می‌شود. فرمان‌های تعاملی مدیران در این نسخه برای group/supergroup طراحی شده‌اند؛ مدیریت تنظیمات کانال از پنل مالک/رابط مدیریتی قابل توسعه است.
+مدیران گروه می‌توانند تنظیمات مقصد خود را با پنل دکمه‌ای یا فرمان‌های متنی تغییر دهند.
