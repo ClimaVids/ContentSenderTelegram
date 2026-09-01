@@ -42,10 +42,27 @@ jobs:
           set -euo pipefail
           test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN is missing"; exit 1; }
 
+      - name: Verify Cloudflare Bot Interface
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CLIMAVIDS_BOT_API_URL: https://climavids-content-sender-bot.birjand-climate.workers.dev
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import requests
+          url = os.environ["CLIMAVIDS_BOT_API_URL"].rstrip("/") + "/internal/destinations"
+          r = requests.get(url, headers={"Authorization": f"Bearer {os.environ['TELEGRAM_BOT_TOKEN']}"}, timeout=20)
+          r.raise_for_status()
+          data = r.json()
+          assert isinstance(data, list), data
+          print(f"BOT_INTERFACE_OK destinations={len(data)}")
+          PY
+
       - name: Publish due content to the ClimaVids network
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CLIMAVIDS_BOT_API_URL: ${{ vars.CLIMAVIDS_BOT_API_URL }}
+          CLIMAVIDS_BOT_API_URL: https://climavids-content-sender-bot.birjand-climate.workers.dev
         run: |
           set -euo pipefail
           python -m climavids.cli publish-network
