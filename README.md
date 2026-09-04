@@ -88,3 +88,30 @@ CI روی Push به `main` تست‌ها، اعتبارسنجی Worker، Deploy 
 نیازی به `TELEGRAM_CHAT_ID` یا `TELEGRAM_OWNER_CHAT_ID` نیست؛ مالک با `/claim` ثبت می‌شود.
 
 `@Climavid_bot` برای انتشار در `@climavids` و مقصدهای دیگر باید Administrator باشد.
+
+## ⭐ Support, Sponsorship & Collaboration
+
+اگر این پروژه برای شما مفید است، حمایت شما به توسعه و نگهداری ابزارهای متن‌باز **ClimaVids** کمک می‌کند.
+
+### حمایت از پروژه
+
+راهنمای کامل حمایت مالی و غیرمالی در [SUPPORT.md](SUPPORT.md) قرار دارد.
+
+- ⭐ یک Star به پروژه بدهید.
+- 🐛 باگ‌ها را گزارش کنید.
+- 💡 قابلیت‌های جدید پیشنهاد دهید.
+- 🔧 در توسعه با Pull Request مشارکت کنید.
+
+### همکاری تجاری
+
+برای توسعه سفارشی Telegram Bot، اتوماسیون محتوا، Cloudflare Workers، Python و ابزارهای اقلیمی می‌توان درباره پروژه همکاری کرد.
+
+📧 `birjand.climate@yahoo.com`
+
+### Funding
+
+در صورت فعال‌شدن یک روش رسمی و قابل‌دریافت برای حمایت مالی، لینک آن در تنظیمات Funding ریپازیتوری اضافه خواهد شد. هیچ آدرس پرداخت جعلی یا غیرقابل‌تأییدی در پروژه قرار نمی‌گیرد.
+
+---
+
+**ClimaVids** — Open-source tools for climate, weather and content automation.
