@@ -106,6 +106,8 @@ CI روی Push به `main` تست‌ها، اعتبارسنجی Worker، Deploy 
 
 برای توسعه سفارشی Telegram Bot، اتوماسیون محتوا، Cloudflare Workers، Python و ابزارهای اقلیمی می‌توان درباره پروژه همکاری کرد.
 
+جزئیات خدمات در [SERVICES.md](SERVICES.md) آمده است.
+
 📧 `birjand.climate@yahoo.com`
 
 ### Funding
