@@ -7,8 +7,10 @@ on:
       - tools/patch_owner_ui.py
   workflow_dispatch:
 
+# This workflow is source-transforming automation. It validates the generated
+# change but does not write source code directly to the default branch.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: apply-button-ui
@@ -20,7 +22,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -33,14 +35,13 @@ jobs:
           node --check src/index.js
           node --check src/entry.js
 
-      - name: Commit UI changes
+      - name: Report generated changes for review
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet; then
+          if git diff --quiet -- workers/bot-interface/src/index.js; then
             echo "No changes required."
             exit 0
           fi
-          git add workers/bot-interface/src/index.js
-          git commit -m "Add button-based Telegram menus"
-          git push
+          echo "The UI patch produced source changes. Review and apply them through a pull request."
+          git diff --check
+          git diff -- workers/bot-interface/src/index.js
+          exit 1
