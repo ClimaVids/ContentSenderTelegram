@@ -6,8 +6,11 @@ on:
       - tools/enable_bot_buttons.py
   workflow_dispatch:
 
+# This workflow intentionally does not write to the default branch.
+# The upgrade script is source-transforming automation; changes must be reviewed
+# in a normal PR before they are merged/deployed.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: button-upgrade
@@ -19,22 +22,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Apply button upgrade
+      - name: Apply button upgrade in a clean working tree
         run: python tools/enable_bot_buttons.py
 
       - name: Check JavaScript syntax
         run: node --check workers/bot-interface/src/index.js
 
-      - name: Commit upgraded bot interface
+      - name: Report generated changes for review
         run: |
           if git diff --quiet -- workers/bot-interface/src/index.js; then
             echo "No changes needed"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add workers/bot-interface/src/index.js
-          git commit -m "Enable Telegram inline button menus"
-          git push
+          echo "The upgrade script produced source changes. Review and apply them through a pull request."
+          git diff --check
+          git diff -- workers/bot-interface/src/index.js
+          exit 1
